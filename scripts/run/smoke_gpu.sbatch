@@ -1,52 +1,90 @@
 #!/usr/bin/env bash
-#SBATCH -J qe-smoke-gpu
-#SBATCH -N 1
+#SBATCH --job-name=BUILD-SMOKE-T001-G1-smoke-si8
+#SBATCH --partition=dev
+#SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:1
-#SBATCH -t 00:20:00
+#SBATCH --time=00:20:00
+#SBATCH --output=/work/%u/hipac26-qe-runs/slurm/%x-%j.out
+#SBATCH --error=/work/%u/hipac26-qe-runs/slurm/%x-%j.err
+
 set -euo pipefail
 
-source "/work/${USER}/hipac26-qe/scripts/lib/common.sh"
-require_allow_qe_execution
-ensure_module
+USER_NAME="${USER}"
+WORKROOT="/work/${USER_NAME}"
+REPO="${WORKROOT}/hipac26-qe"
+BUILDROOT="${WORKROOT}/hipac26-qe-builds"
+CASEROOT="${WORKROOT}/hipac26-qe-cases"
+PSEUDOROOT="${WORKROOT}/hipac26-qe-pseudos"
+RUNROOT="${WORKROOT}/hipac26-qe-runs"
+TOKEN="${WORKROOT}/hipac26-qe-local/ALLOW_QE_EXECUTION"
 
-: "${CAND:?export CAND=<candidate dir name>}"
-PWX="${QE_BUILDROOT}/${CAND}/install/bin/pw.x"
-CASE="${QE_CASES}/smoke"
-RUN="${QE_RUNROOT}/${CAND}-smoke-$(date +%Y%m%d_%H%M%S)"
+GATE_ID="${GATE_ID:-BUILD-SMOKE-T001}"
+RUN_TYPE="${RUN_TYPE:-smoke}"
+BUILD_ID="${BUILD_ID:-G1-qe75-nvhpc259-gpu-base}"
+CASE_NAME="${CASE_NAME:-smoke-si8}"
+BUILD_HASH="${BUILD_HASH:-d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543}"
+PWX="${PWX:-${BUILDROOT}/${BUILD_ID}/install/bin/pw.x}"
 
-mkdir -p "${RUN}"
-cd "${RUN}"
-cp "${CASE}/pw.in" .
+mkdir -p "${RUNROOT}/slurm"
 
-case "${CAND}" in
-  *nvhpc263*) module purge && module load x86-nvhpc/26.3 ;;
-  *nvhpc259*) module purge && module load x86-nvhpc/25.9 ;;
-  *gcc132*) module purge && module load gcc/13.2 ;;
-esac
+if [ ! -f "${TOKEN}" ]; then
+  echo "ERROR: missing QE execution token: ${TOKEN}" >&2
+  echo "Refusing to run pw.x." >&2
+  exit 90
+fi
 
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK}"
-export ESPRESSO_PSEUDO="${QE_PSEUDOS}"
+ENV_FILE="$(
+  python3 "${REPO}/scripts/qe_smoke_prepare.py" \
+    --workroot "${WORKROOT}" \
+    --repo "${REPO}" \
+    --buildroot "${BUILDROOT}" \
+    --caseroot "${CASEROOT}" \
+    --pseudoroot "${PSEUDOROOT}" \
+    --runroot "${RUNROOT}" \
+    --gate-id "${GATE_ID}" \
+    --run-type "${RUN_TYPE}" \
+    --build-id "${BUILD_ID}" \
+    --case-name "${CASE_NAME}" \
+    --build-hash "${BUILD_HASH}" \
+    --pwx "${PWX}" \
+    --slurm-job-id "${SLURM_JOB_ID:-}" \
+    --partition "${SLURM_JOB_PARTITION:-dev}" \
+    --nodes "${SLURM_JOB_NUM_NODES:-1}" \
+    --ntasks "${SLURM_NTASKS:-1}" \
+    --ntasks-per-node "1" \
+    --cpus-per-task "${SLURM_CPUS_PER_TASK:-12}" \
+    --gres "gpu:1" \
+    --time-limit "00:20:00"
+)"
 
-{
-  echo "jobid=${SLURM_JOB_ID}"
-  echo "node=$(hostname)"
-  echo "cand=${CAND}"
-  echo "benchmark_valid=false"
-  sha256sum pw.in
-  sha256sum "${PWX}"
-} > run_meta.txt
+# shellcheck disable=SC1090
+source "${ENV_FILE}"
 
-module list > module_list_runtime.txt 2>&1 || true
-ldd "${PWX}" > ldd_at_runtime.txt || true
-nvidia-smi > nvidia_smi_before.txt || true
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-12}"
 
-srun --cpu-bind=cores "${PWX}" -input pw.in > pw.out 2> pw.err
-rc=$?
+set +e
+cd "${RUN_DIR}"
+srun "${PWX_RESOLVED}" -in "${PW_INPUT}" > "${PW_OUT}" 2> "${PW_ERR}"
+QE_EXIT=$?
+set -e
 
-grep -E "GPU|Parallel version" pw.out | head -5 > result_parallel.txt || true
-grep "!    total energy" pw.out > result_energy.txt || true
-grep -E "convergence has been achieved|PWSCF.*WALL" pw.out > result_status_wall.txt || true
+python3 "${REPO}/scripts/parse_qe_smoke.py" \
+  --pw-out "${PW_OUT}" \
+  --pw-err "${PW_ERR}" \
+  --metadata "${METADATA_JSON}" \
+  --out "${PARSED_JSON}" || true
 
-exit "${rc}"
+python3 "${REPO}/scripts/qe_smoke_finalize.py" \
+  --metadata "${METADATA_JSON}" \
+  --parsed "${PARSED_JSON}" \
+  --qe-exit-code "${QE_EXIT}"
+
+python3 "${REPO}/scripts/collect_qe_runs.py" \
+  --root "${RUNROOT}" \
+  --csv "${RUNROOT}/results.csv" \
+  --xlsx "${RUNROOT}/qe_results.xlsx" || true
+
+echo "RUN_DIR=${RUN_DIR}"
+exit "${QE_EXIT}"
