@@ -28,8 +28,10 @@ BUILD_ID="${BUILD_ID:-G1p-qe75-nvhpc259-gpu-nvtx}"
 CASE_NAME="${CASE_NAME:-typeA-au111-manyk}"
 BUILD_HASH="${BUILD_HASH:-e93f7a9b9a7e8ab963ef20a530a5731d7569bd7d53a7ed9bcf42115e53a91b44}"
 PWX="${PWX:-${BUILDROOT}/${BUILD_ID}/install/bin/pw.x}"
+EQUIV_ELECTRON_MAXSTEP="${EQUIV_ELECTRON_MAXSTEP:-2}"
 ELECTRON_MAXSTEP="${ELECTRON_MAXSTEP:-5}"
 RUNTIME_GROUP_ID="${RUNTIME_GROUP_ID:-typeA_profile_g1p_dev_1gpu_np1}"
+EQUIV_RUNTIME_GROUP_ID="${EQUIV_RUNTIME_GROUP_ID:-typeA_profile_equiv_g1p_dev_1gpu_np1}"
 LAUNCHER="${LAUNCHER:-nsys_mpirun_np1_bind_to_none}"
 TIME_LIMIT="${TIME_LIMIT:-00:15:00}"
 
@@ -41,7 +43,9 @@ require_exact_scope() {
   [ "${INPUT_TYPE}" = "TypeA_manyk" ] || bad=1
   [ "${BUILD_ID}" = "G1p-qe75-nvhpc259-gpu-nvtx" ] || bad=1
   [ "${CASE_NAME}" = "typeA-au111-manyk" ] || bad=1
+  [ "${EQUIV_ELECTRON_MAXSTEP}" = "2" ] || bad=1
   [ "${ELECTRON_MAXSTEP}" = "5" ] || bad=1
+  [ "${EQUIV_RUNTIME_GROUP_ID}" = "typeA_profile_equiv_g1p_dev_1gpu_np1" ] || bad=1
   [ "${RUNTIME_GROUP_ID}" = "typeA_profile_g1p_dev_1gpu_np1" ] || bad=1
   [ "${LAUNCHER}" = "nsys_mpirun_np1_bind_to_none" ] || bad=1
   [ "${TIME_LIMIT}" = "00:15:00" ] || bad=1
@@ -53,7 +57,9 @@ require_exact_scope() {
     echo "INPUT_TYPE=${INPUT_TYPE}" >&2
     echo "BUILD_ID=${BUILD_ID}" >&2
     echo "CASE_NAME=${CASE_NAME}" >&2
+    echo "EQUIV_ELECTRON_MAXSTEP=${EQUIV_ELECTRON_MAXSTEP}" >&2
     echo "ELECTRON_MAXSTEP=${ELECTRON_MAXSTEP}" >&2
+    echo "EQUIV_RUNTIME_GROUP_ID=${EQUIV_RUNTIME_GROUP_ID}" >&2
     echo "RUNTIME_GROUP_ID=${RUNTIME_GROUP_ID}" >&2
     echo "LAUNCHER=${LAUNCHER}" >&2
     echo "TIME_LIMIT=${TIME_LIMIT}" >&2
@@ -62,6 +68,30 @@ require_exact_scope() {
 }
 
 require_exact_scope
+
+record_metadata_extra() {
+  local metadata_json="$1"
+  local nsys_path="$2"
+  local nsys_version="$3"
+  local analysis_rule="$4"
+
+  python3 - "$metadata_json" "$nsys_path" "$nsys_version" "$analysis_rule" <<'PY2'
+import json
+import sys
+from pathlib import Path
+
+path = Path(sys.argv[1])
+meta = json.loads(path.read_text())
+meta["nsys_path"] = sys.argv[2]
+meta["nsys_version"] = sys.argv[3]
+meta["profiling_analysis_rule"] = sys.argv[4]
+meta["benchmark_valid"] = False
+meta["performance_claim_allowed"] = False
+meta["optimization_claim_allowed"] = False
+meta["eligible_for_timing_comparison"] = False
+path.write_text(json.dumps(meta, indent=2, sort_keys=True) + "\n")
+PY2
+}
 
 cleanup_token() {
   rm -f "${TOKEN}"
@@ -126,7 +156,81 @@ if [ ! -f "${TOKEN}" ]; then
   exit 90
 fi
 
-ENV_FILE="$(
+NSYS_PATH="$(command -v nsys)"
+NSYS_VERSION="$(nsys --version 2>&1 | tr '\n' ' ' | sed 's/[[:space:]]\+/ /g')"
+ANALYSIS_RULE="Pilot profile is qualitative only. Ignore init and iterations 1-2; inspect steady-state iterations 3-5. np=1 MPI trace validates tracing only, not communication behavior."
+
+export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-12}"
+
+# Step 1: bare G1p equivalence run. Same job, no nsys.
+EQUIV_ENV_FILE="$(
+  python3 "${REPO}/scripts/qe_baseperf_prepare.py" \
+    --workroot "${WORKROOT}" \
+    --repo "${REPO}" \
+    --buildroot "${BUILDROOT}" \
+    --caseroot "${CASEROOT}" \
+    --pseudoroot "${PSEUDOROOT}" \
+    --runroot "${RUNROOT}" \
+    --gate-id "${GATE_ID}" \
+    --run-type "profiling_equivalence" \
+    --input-type "${INPUT_TYPE}" \
+    --build-id "${BUILD_ID}" \
+    --case-name "${CASE_NAME}" \
+    --build-hash "${BUILD_HASH}" \
+    --pwx "${PWX}" \
+    --slurm-job-id "${SLURM_JOB_ID:-}" \
+    --partition "${SLURM_JOB_PARTITION:-dev}" \
+    --nodes "${SLURM_JOB_NUM_NODES:-1}" \
+    --ntasks "${SLURM_NTASKS:-1}" \
+    --ntasks-per-node "1" \
+    --cpus-per-task "${SLURM_CPUS_PER_TASK:-12}" \
+    --gres "gpu:1" \
+    --time-limit "${TIME_LIMIT}" \
+    --electron-maxstep "${EQUIV_ELECTRON_MAXSTEP}" \
+    --runtime-group-id "${EQUIV_RUNTIME_GROUP_ID}" \
+    --launcher "mpirun_np1_bind_to_none" \
+    --candidate-role "profiling_only" \
+    --eligible-for-timing-comparison "false" \
+    --exclusion-reason "G1p bare equivalence check; excluded from timing comparison" \
+    --notes "Bare G1p equivalence check before Nsight profile; not benchmark; compare energy/runtime qualitatively against G1 calibration." \
+    --sbatch-source "${REPO}/scripts/run/profiling_typeA_g1p_nvtx.sbatch"
+)"
+
+# shellcheck disable=SC1090
+source "${EQUIV_ENV_FILE}"
+record_metadata_extra "${METADATA_JSON}" "${NSYS_PATH}" "${NSYS_VERSION}" "${ANALYSIS_RULE}"
+
+set +e
+cd "${RUN_DIR}"
+mpirun --bind-to none -np 1 "${PWX_RESOLVED}" -in "${PW_INPUT}" > "${PW_OUT}" 2> "${PW_ERR}"
+EQUIV_EXIT=$?
+set -e
+
+python3 "${REPO}/scripts/parse_qe_smoke.py" \
+  --pw-out "${PW_OUT}" \
+  --pw-err "${PW_ERR}" \
+  --metadata "${METADATA_JSON}" \
+  --out "${PARSED_JSON}" || true
+
+python3 "${REPO}/scripts/qe_smoke_finalize.py" \
+  --metadata "${METADATA_JSON}" \
+  --parsed "${PARSED_JSON}" \
+  --qe-exit-code "${EQUIV_EXIT}"
+
+EQUIV_RUN_DIR="${RUN_DIR}"
+
+if [ "${EQUIV_EXIT}" -ne 0 ]; then
+  python3 "${REPO}/scripts/collect_qe_runs.py" \
+    --root "${RUNROOT}" \
+    --csv "${RUNROOT}/results.csv" \
+    --xlsx "${RUNROOT}/qe_results.xlsx" || true
+  echo "EQUIV_RUN_DIR=${EQUIV_RUN_DIR}"
+  echo "ERROR: bare G1p equivalence run failed; refusing profiled run" >&2
+  exit "${EQUIV_EXIT}"
+fi
+
+# Step 2: profiled G1p pilot run. Use per-rank filename style now.
+PROFILE_ENV_FILE="$(
   python3 "${REPO}/scripts/qe_baseperf_prepare.py" \
     --workroot "${WORKROOT}" \
     --repo "${REPO}" \
@@ -155,24 +259,25 @@ ENV_FILE="$(
     --candidate-role "profiling_only" \
     --eligible-for-timing-comparison "false" \
     --exclusion-reason "G1p NVTX profiling-only; excluded from timing comparison" \
-    --notes "TypeA G1p NVTX/Nsight Systems profiling only; not benchmark; not timing comparison." \
+    --notes "TypeA G1p NVTX/Nsight Systems profiling pilot only; inspect iterations 3-5; not benchmark; not timing comparison." \
     --sbatch-source "${REPO}/scripts/run/profiling_typeA_g1p_nvtx.sbatch"
 )"
 
 # shellcheck disable=SC1090
-source "${ENV_FILE}"
-
-export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-12}"
+source "${PROFILE_ENV_FILE}"
+record_metadata_extra "${METADATA_JSON}" "${NSYS_PATH}" "${NSYS_VERSION}" "${ANALYSIS_RULE}"
 
 set +e
 cd "${RUN_DIR}"
-nsys profile \
-  --trace=cuda,nvtx,mpi,osrt \
-  --stats=true \
-  --force-overwrite=true \
-  --output="${RUN_DIR}/nsys_typeA_g1p" \
-  mpirun --bind-to none -np 1 "${PWX_RESOLVED}" -in "${PW_INPUT}" > "${PW_OUT}" 2> "${PW_ERR}"
-QE_EXIT=$?
+mpirun --bind-to none -np 1 \
+  nsys profile \
+    -o "${RUN_DIR}/nsys_r%q{OMPI_COMM_WORLD_RANK}" \
+    --trace=cuda,nvtx,openacc,mpi \
+    --sample=none --cpuctxsw=none \
+    --stats=true \
+    --force-overwrite=true \
+    "${PWX_RESOLVED}" -in "${PW_INPUT}" > "${PW_OUT}" 2> "${PW_ERR}"
+PROFILE_EXIT=$?
 set -e
 
 python3 "${REPO}/scripts/parse_qe_smoke.py" \
@@ -184,13 +289,14 @@ python3 "${REPO}/scripts/parse_qe_smoke.py" \
 python3 "${REPO}/scripts/qe_smoke_finalize.py" \
   --metadata "${METADATA_JSON}" \
   --parsed "${PARSED_JSON}" \
-  --qe-exit-code "${QE_EXIT}"
+  --qe-exit-code "${PROFILE_EXIT}"
 
 python3 "${REPO}/scripts/collect_qe_runs.py" \
   --root "${RUNROOT}" \
   --csv "${RUNROOT}/results.csv" \
   --xlsx "${RUNROOT}/qe_results.xlsx" || true
 
-echo "RUN_DIR=${RUN_DIR}"
-echo "NSYS_REPORT=${RUN_DIR}/nsys_typeA_g1p.nsys-rep"
-exit "${QE_EXIT}"
+echo "EQUIV_RUN_DIR=${EQUIV_RUN_DIR}"
+echo "PROFILE_RUN_DIR=${RUN_DIR}"
+echo "NSYS_REPORT_PREFIX=${RUN_DIR}/nsys_r<rank>"
+exit "${PROFILE_EXIT}"
