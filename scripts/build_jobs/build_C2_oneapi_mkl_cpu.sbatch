@@ -26,8 +26,19 @@ module purge
 module load oneapi/2025.1 cmake/4.0.0
 
 MKLROOT=${MKLROOT:-/work/envstack/apps/oneapi/2025.1/mkl/2025.1}
-test -f "$MKLROOT/lib/libmkl_rt.so"
-export LD_LIBRARY_PATH="$MKLROOT/lib:${LD_LIBRARY_PATH:-}"
+MKL_LIB="$MKLROOT/lib"
+
+MKL_RT="$MKL_LIB/libmkl_rt.so"
+MKL_SCALAPACK="$MKL_LIB/libmkl_scalapack_lp64.so"
+MKL_BLACS="$MKL_LIB/libmkl_blacs_intelmpi_lp64.so"
+
+test -f "$MKL_RT"
+test -f "$MKL_SCALAPACK"
+test -f "$MKL_BLACS"
+
+SCALAPACK_LIBS="$MKL_SCALAPACK;$MKL_BLACS;$MKL_RT"
+
+export LD_LIBRARY_PATH="$MKL_LIB:${LD_LIBRARY_PATH:-}"
 
 if command -v mpiifx >/dev/null 2>&1; then
   FC=mpiifx
@@ -77,10 +88,16 @@ hostname
 module list 2>&1 | tee "$MANIFEST/modules.txt"
 env | sort > "$MANIFEST/env.txt"
 
-echo "FC=$FC"
-echo "CC=$CC"
-echo "CXX=$CXX"
-echo "MKLROOT=$MKLROOT" | tee "$MANIFEST/mklroot.txt"
+{
+  echo "FC=$FC"
+  echo "CC=$CC"
+  echo "CXX=$CXX"
+  echo "MKLROOT=$MKLROOT"
+  echo "MKL_RT=$MKL_RT"
+  echo "MKL_SCALAPACK=$MKL_SCALAPACK"
+  echo "MKL_BLACS=$MKL_BLACS"
+  echo "SCALAPACK_LIBS=$SCALAPACK_LIBS"
+} | tee "$MANIFEST/mkl_scalapack.txt"
 
 which "$FC" || true
 which "$CC" || true
@@ -98,14 +115,17 @@ cmake -S "$SRC" -B "$BUILD" \
   -DCMAKE_C_COMPILER="$CC" \
   -DCMAKE_CXX_COMPILER="$CXX" \
   -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_LIBRARY_PATH="$MKL_LIB" \
   -DQE_ENABLE_MPI=ON \
   -DQE_ENABLE_CUDA=OFF \
   -DQE_ENABLE_OPENACC=OFF \
   -DQE_ENABLE_OPENMP=ON \
   -DQE_ENABLE_SCALAPACK=ON \
   -DBLA_VENDOR=Intel10_64lp \
-  -DBLAS_LIBRARIES="$MKLROOT/lib/libmkl_rt.so" \
-  -DLAPACK_LIBRARIES="$MKLROOT/lib/libmkl_rt.so" \
+  -DBLAS_LIBRARIES="$MKL_RT" \
+  -DLAPACK_LIBRARIES="$MKL_RT" \
+  -DSCALAPACK_DIR="$MKLROOT" \
+  -DSCALAPACK_LIBRARIES="$SCALAPACK_LIBS" \
   -DQE_ENABLE_HDF5=OFF \
   -DQE_ENABLE_LIBXC=OFF \
   -DQE_FFTW_VENDOR=Internal \
@@ -133,6 +153,7 @@ ldd "$INSTALL/bin/pw.x" > "$MANIFEST/ldd.txt" 2>&1 || true
   echo "benchmark_valid=false"
   echo "qe_execution_in_build_exec=false"
   echo "mklroot=$MKLROOT"
+  echo "scalapack_libs=$SCALAPACK_LIBS"
 } > "$MANIFEST/build_summary.txt"
 
 echo "===== $CID build done ====="
