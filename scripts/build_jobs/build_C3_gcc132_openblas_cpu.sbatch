@@ -6,7 +6,7 @@
 #SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:1
 #SBATCH --time=02:00:00
-#SBATCH --job-name=G1p-qe75-nvhpc259-gpu-nvtx
+#SBATCH --job-name=C3-qe75-gcc132-openblas-cpu
 #SBATCH --output=/work/%u/hipac26-qe-runs/buildlogs/%x-%j.out
 
 set -euo pipefail
@@ -15,7 +15,7 @@ test -f /work/$USER/hipac26-qe-local/ALLOW_BUILD_EXECUTION
 
 export HOME=/work/$USER
 export XDG_CONFIG_HOME=/work/$USER/.config
-mkdir -p "$XDG_CONFIG_HOME/NVIDIA/nvhpc/25.9"
+mkdir -p "$XDG_CONFIG_HOME"
 
 if type module >/dev/null 2>&1; then :; else
   [ -r /etc/profile.d/modules.sh ] && source /etc/profile.d/modules.sh
@@ -23,27 +23,18 @@ if type module >/dev/null 2>&1; then :; else
 fi
 
 module purge
-module load x86-nvhpc/25.9 cmake/4.0.0
+module load gcc/13.2 cmake/4.0.0
 
-# NVHPC 25.9 has NVTX headers but not legacy libnvToolsExt.so.
-# cuda/12.6 provides the legacy NVTX library required by QE's CMake check.
-NVTX_ROOT=/work/envstack/apps/cuda/12.6/targets/x86_64-linux
-test -f "$NVTX_ROOT/include/nvToolsExt.h"
-test -f "$NVTX_ROOT/lib/libnvToolsExt.so"
+OPENBLAS=/opt/ohpc/pub/libs/gnu12/openblas/0.3.21
+test -f "$OPENBLAS/lib/libopenblas.so"
+export LD_LIBRARY_PATH="$OPENBLAS/lib:${LD_LIBRARY_PATH:-}"
 
-export CPATH="$NVTX_ROOT/include:${CPATH:-}"
-export LIBRARY_PATH="$NVTX_ROOT/lib:${LIBRARY_PATH:-}"
-export LD_LIBRARY_PATH="$NVTX_ROOT/lib:${LD_LIBRARY_PATH:-}"
-
-export OMPI_FC=nvfortran
-export OMPI_CC=nvc
-export OMPI_CXX=nvc++
-export FC=mpif90
-export CC=mpicc
-export CXX=mpic++
+export FC=gfortran
+export CC=gcc
+export CXX=g++
 
 SRC=/work/$USER/hipac26-qe-src/qe-7.5
-CID=G1p-qe75-nvhpc259-gpu-nvtx
+CID=C3-qe75-gcc132-openblas-cpu
 CDIR=/work/$USER/hipac26-qe-builds/$CID
 BUILD="$CDIR/build"
 INSTALL="$CDIR/install"
@@ -59,13 +50,12 @@ hostname
 module list 2>&1 | tee "$MANIFEST/modules.txt"
 env | sort > "$MANIFEST/env.txt"
 
-echo "NVTX_ROOT=$NVTX_ROOT" | tee "$MANIFEST/nvtx_root.txt"
-ls -lah "$NVTX_ROOT/lib/libnvToolsExt.so" | tee -a "$MANIFEST/nvtx_root.txt"
+echo "OPENBLAS=$OPENBLAS" | tee "$MANIFEST/openblas.txt"
+ls -lah "$OPENBLAS/lib/libopenblas.so" | tee -a "$MANIFEST/openblas.txt"
 
-which nvfortran || true
-which mpif90 || true
-mpif90 -show | tee "$MANIFEST/mpif90_show.txt" || true
-nvfortran --version | head -n 5 || true
+which gfortran
+which gcc
+gfortran --version | head -n 5
 
 test -f "$SRC/CMakeLists.txt"
 test -d "$SRC/PW"
@@ -73,19 +63,19 @@ git -C "$SRC" rev-parse HEAD | tee "$MANIFEST/qe_source_head.txt" || true
 
 cmake -S "$SRC" -B "$BUILD" \
   -DCMAKE_INSTALL_PREFIX="$INSTALL" \
-  -DCMAKE_Fortran_COMPILER=mpif90 \
-  -DCMAKE_C_COMPILER=mpicc \
-  -DCMAKE_CXX_COMPILER=mpic++ \
+  -DCMAKE_Fortran_COMPILER=gfortran \
+  -DCMAKE_C_COMPILER=gcc \
+  -DCMAKE_CXX_COMPILER=g++ \
   -DCMAKE_BUILD_TYPE=Release \
-  -DCMAKE_LIBRARY_PATH="$NVTX_ROOT/lib" \
-  -DCMAKE_INCLUDE_PATH="$NVTX_ROOT/include" \
-  -DCMAKE_EXE_LINKER_FLAGS="-L$NVTX_ROOT/lib -Wl,-rpath,$NVTX_ROOT/lib" \
-  -DQE_ENABLE_CUDA=ON \
-  -DQE_ENABLE_OPENACC=ON \
-  -DQE_ENABLE_OPENMP=ON \
-  -DQE_ENABLE_SCALAPACK=ON \
-  -DQE_ENABLE_MPI_GPU_AWARE=OFF \
-  -DQE_ENABLE_PROFILE_NVTX=ON \
+  -DQE_ENABLE_MPI=OFF \
+  -DQE_ENABLE_CUDA=OFF \
+  -DQE_ENABLE_OPENACC=OFF \
+  -DQE_ENABLE_OPENMP=OFF \
+  -DQE_ENABLE_SCALAPACK=OFF \
+  -DQE_LAPACK_INTERNAL=OFF \
+  -DBLA_VENDOR=OpenBLAS \
+  -DBLAS_LIBRARIES="$OPENBLAS/lib/libopenblas.so" \
+  -DLAPACK_LIBRARIES="$OPENBLAS/lib/libopenblas.so" \
   -DQE_ENABLE_HDF5=OFF \
   -DQE_ENABLE_LIBXC=OFF \
   -DQE_FFTW_VENDOR=Internal \
@@ -112,7 +102,7 @@ ldd "$INSTALL/bin/pw.x" > "$MANIFEST/ldd.txt" 2>&1 || true
   echo "host=$(hostname)"
   echo "benchmark_valid=false"
   echo "qe_execution_in_build_exec=false"
-  echo "nvtx_root=$NVTX_ROOT"
+  echo "openblas=$OPENBLAS"
 } > "$MANIFEST/build_summary.txt"
 
 echo "===== $CID build done ====="

@@ -17,59 +17,55 @@ export HOME=/work/$USER
 export XDG_CONFIG_HOME=/work/$USER/.config
 mkdir -p "$XDG_CONFIG_HOME"
 
-ROOT=/work/$USER/hipac26-qe
-SRC=/work/$USER/hipac26-qe-src/qe-7.5
-CID=C2-qe75-oneapi-mkl-cpu
-CDIR=/work/$USER/hipac26-qe-builds/$CID
-BUILD="$CDIR/build"
-INSTALL="$CDIR/install"
-MANIFEST="$CDIR/manifest"
-
 if type module >/dev/null 2>&1; then :; else
   [ -r /etc/profile.d/modules.sh ] && source /etc/profile.d/modules.sh
   [ -r /etc/profile.d/lmod.sh ] && source /etc/profile.d/lmod.sh
 fi
 
 module purge
+module load oneapi/2025.1 cmake/4.0.0
 
-# Reuse the existing env route if present; then record exactly what it did.
-if [ -f "$ROOT/scripts/env/oneapi.sh" ]; then
-  source "$ROOT/scripts/env/oneapi.sh"
-else
-  module load oneapi cmake/4.0.0
-fi
+MKLROOT=${MKLROOT:-/work/envstack/apps/oneapi/2025.1/mkl/2025.1}
+test -f "$MKLROOT/lib/libmkl_rt.so"
+export LD_LIBRARY_PATH="$MKLROOT/lib:${LD_LIBRARY_PATH:-}"
 
-# Defensive compiler discovery after oneAPI env is loaded.
 if command -v mpiifx >/dev/null 2>&1; then
-  FC=${FC:-mpiifx}
+  FC=mpiifx
 elif command -v mpiifort >/dev/null 2>&1; then
-  FC=${FC:-mpiifort}
+  FC=mpiifort
 elif command -v ifx >/dev/null 2>&1; then
-  FC=${FC:-ifx}
+  FC=ifx
 else
   echo "ERROR: no oneAPI Fortran compiler found"
   exit 1
 fi
 
 if command -v mpiicx >/dev/null 2>&1; then
-  CC=${CC:-mpiicx}
+  CC=mpiicx
 elif command -v icx >/dev/null 2>&1; then
-  CC=${CC:-icx}
+  CC=icx
 else
   echo "ERROR: no oneAPI C compiler found"
   exit 1
 fi
 
 if command -v mpiicpx >/dev/null 2>&1; then
-  CXX=${CXX:-mpiicpx}
+  CXX=mpiicpx
 elif command -v icpx >/dev/null 2>&1; then
-  CXX=${CXX:-icpx}
+  CXX=icpx
 else
   echo "ERROR: no oneAPI C++ compiler found"
   exit 1
 fi
 
 export FC CC CXX
+
+SRC=/work/$USER/hipac26-qe-src/qe-7.5
+CID=C2-qe75-oneapi-mkl-cpu
+CDIR=/work/$USER/hipac26-qe-builds/$CID
+BUILD="$CDIR/build"
+INSTALL="$CDIR/install"
+MANIFEST="$CDIR/manifest"
 
 mkdir -p "$CDIR" "$INSTALL/bin" "$MANIFEST"
 rm -rf "$BUILD"
@@ -81,18 +77,16 @@ hostname
 module list 2>&1 | tee "$MANIFEST/modules.txt"
 env | sort > "$MANIFEST/env.txt"
 
-echo "===== compilers ====="
 echo "FC=$FC"
 echo "CC=$CC"
 echo "CXX=$CXX"
+echo "MKLROOT=$MKLROOT" | tee "$MANIFEST/mklroot.txt"
+
 which "$FC" || true
 which "$CC" || true
 which "$CXX" || true
 "$FC" --version | head -n 10 || true
 "$CC" --version | head -n 10 || true
-
-echo "===== MKLROOT ====="
-echo "MKLROOT=${MKLROOT:-UNSET}"
 
 test -f "$SRC/CMakeLists.txt"
 test -d "$SRC/PW"
@@ -109,10 +103,12 @@ cmake -S "$SRC" -B "$BUILD" \
   -DQE_ENABLE_OPENACC=OFF \
   -DQE_ENABLE_OPENMP=ON \
   -DQE_ENABLE_SCALAPACK=ON \
+  -DBLA_VENDOR=Intel10_64lp \
+  -DBLAS_LIBRARIES="$MKLROOT/lib/libmkl_rt.so" \
+  -DLAPACK_LIBRARIES="$MKLROOT/lib/libmkl_rt.so" \
   -DQE_ENABLE_HDF5=OFF \
   -DQE_ENABLE_LIBXC=OFF \
   -DQE_FFTW_VENDOR=Internal \
-  -DBLA_VENDOR=Intel10_64lp \
   2>&1 | tee "$CDIR/build_cmake.log"
 
 cmake --build "$BUILD" --target pw -j 12 2>&1 | tee "$CDIR/build_make.log"
@@ -136,6 +132,7 @@ ldd "$INSTALL/bin/pw.x" > "$MANIFEST/ldd.txt" 2>&1 || true
   echo "host=$(hostname)"
   echo "benchmark_valid=false"
   echo "qe_execution_in_build_exec=false"
+  echo "mklroot=$MKLROOT"
 } > "$MANIFEST/build_summary.txt"
 
 echo "===== $CID build done ====="
