@@ -113,7 +113,7 @@ snapshot_manifest() {
   fi
   
   if [[ -f "${cdir}/build_make.log" ]]; then
-    grep -m10 -oE "cc90|compute_90|gpu=cc[0-9]+|cuda13\.0|CUDA|OpenACC|SCALAPACK|ScaLAPACK" \
+    grep -m10 -oE "cc90|compute_90|gpu=cc[0-9]+|cuda13\.[0-9]|CUDA|OpenACC|SCALAPACK|ScaLAPACK" \
       "${cdir}/build_make.log" > "${m}/gpu_arch_evidence.txt" 2>/dev/null || true
   fi
   
