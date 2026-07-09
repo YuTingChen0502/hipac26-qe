@@ -80,6 +80,7 @@ cmake -S "$SRC" -B "$BUILD" \
   -DQE_ENABLE_MPI_GPU_AWARE=OFF \
   -DQE_ENABLE_HDF5=OFF \
   -DQE_ENABLE_LIBXC=OFF \
+  -DQE_FFTW_VENDOR=Internal \
   2>&1 | tee "$CDIR/build_cmake.log"
 
 echo "===== make pw ====="
