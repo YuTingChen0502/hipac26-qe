@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+
+# Local/runtime outputs
+runs/
+outputs/
+reports/
+logs/
+tmp/
+*.out
+*.err
+*.log
+qe.out
+slurm.out
+slurm.err
+job_id.txt
+submission_record.txt
+env_snapshot.txt
+module_snapshot.txt
+resource_metrics.json
+parsed.json
+parsed_scf.json
+parsed_timing.json
+
+# QE / HPC artifacts
+*.UPF
+pw.x
+ph.x
+*.mod
+*.o
+*.a
+*.so
+make.inc
+config.log
+configure.msg
+
+# Local editor/system
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
+
+# Local opencode scratch
+.opencode/tmp/
