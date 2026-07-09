@@ -33,6 +33,36 @@ RUNTIME_GROUP_ID="${RUNTIME_GROUP_ID:-typeA_calib_g1_dev_1gpu_np1}"
 LAUNCHER="${LAUNCHER:-mpirun_np1_bind_to_none}"
 TIME_LIMIT="${TIME_LIMIT:-00:30:00}"
 
+require_exact_scope() {
+  local bad=0
+
+  [ "${GATE_ID}" = "BUILD-BASEPERF-T001" ] || bad=1
+  [ "${RUN_TYPE}" = "calibration" ] || bad=1
+  [ "${INPUT_TYPE}" = "TypeA_manyk" ] || bad=1
+  [ "${BUILD_ID}" = "G1-qe75-nvhpc259-gpu-base" ] || bad=1
+  [ "${CASE_NAME}" = "typeA-au111-manyk" ] || bad=1
+  [ "${ELECTRON_MAXSTEP}" = "2" ] || bad=1
+  [ "${RUNTIME_GROUP_ID}" = "typeA_calib_g1_dev_1gpu_np1" ] || bad=1
+  [ "${LAUNCHER}" = "mpirun_np1_bind_to_none" ] || bad=1
+  [ "${TIME_LIMIT}" = "00:30:00" ] || bad=1
+
+  if [ "${bad}" -ne 0 ]; then
+    echo "ERROR: exact-scope guard failed for TypeA G1 calibration runner" >&2
+    echo "GATE_ID=${GATE_ID}" >&2
+    echo "RUN_TYPE=${RUN_TYPE}" >&2
+    echo "INPUT_TYPE=${INPUT_TYPE}" >&2
+    echo "BUILD_ID=${BUILD_ID}" >&2
+    echo "CASE_NAME=${CASE_NAME}" >&2
+    echo "ELECTRON_MAXSTEP=${ELECTRON_MAXSTEP}" >&2
+    echo "RUNTIME_GROUP_ID=${RUNTIME_GROUP_ID}" >&2
+    echo "LAUNCHER=${LAUNCHER}" >&2
+    echo "TIME_LIMIT=${TIME_LIMIT}" >&2
+    exit 91
+  fi
+}
+
+require_exact_scope
+
 cleanup_token() {
   rm -f "${TOKEN}"
 }

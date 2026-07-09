@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# DISABLED RUNNER — do not submit.
+# Scope: BUILD-BASEPERF-T001-G1p-typeA-nvtx-profile
+# Candidate: G1p-qe75-nvhpc259-gpu-nvtx
+# Case: typeA-au111-manyk
+# Role: profiling_only
+# Run type: profiling
+# Input type: TypeA_manyk
+# electron_maxstep: 2
+# runtime_group_id: typeA_profile_g1p_dev_1gpu_np1
+# Notes: G1p NVTX profiling-only; never eligible for timing comparison.
+#
+# To activate:
+# 1. Create an explicit gate review packet.
+# 2. Rename this file from .sbatch.disabled to .sbatch in a new commit.
+# 3. Add exact-scope hard guard.
+# 4. Run static checks.
+# 5. Request explicit approval.
+# 6. Only then create ALLOW_QE_EXECUTION and submit exactly approved scope.
+
+echo "ERROR: disabled runner. Do not execute: $0" >&2
+exit 88

@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# DISABLED RUNNER — do not submit.
+# Scope: BUILD-BASEPERF-T001-G1-typeB-si1000-calib
+# Candidate: G1-qe75-nvhpc259-gpu-base
+# Case: typeB-si1000-gamma
+# Role: performance_candidate
+# Run type: calibration
+# Input type: TypeB_si1000
+# electron_maxstep: 2
+# runtime_group_id: typeB_si1000_calib_g1_dev_1gpu_np1
+# Notes: TypeB si1000 calibration disabled; TypeB not approved yet.
+#
+# To activate:
+# 1. Create an explicit gate review packet.
+# 2. Rename this file from .sbatch.disabled to .sbatch in a new commit.
+# 3. Add exact-scope hard guard.
+# 4. Run static checks.
+# 5. Request explicit approval.
+# 6. Only then create ALLOW_QE_EXECUTION and submit exactly approved scope.
+
+echo "ERROR: disabled runner. Do not execute: $0" >&2
+exit 88

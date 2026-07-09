@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+# DISABLED RUNNER — do not submit.
+# Scope: BUILD-BASEPERF-T001-C3-typeA-arbiter
+# Candidate: C3-qe75-gcc132-openblas-cpu
+# Case: typeA-au111-manyk
+# Role: correctness_arbiter
+# Run type: correctness_arbiter
+# Input type: TypeA_manyk
+# electron_maxstep: 2
+# runtime_group_id: typeA_arbiter_c3_dev_cpu_np1
+# Notes: C3 correctness arbiter only; not performance candidate.
+#
+# To activate:
+# 1. Create an explicit gate review packet.
+# 2. Rename this file from .sbatch.disabled to .sbatch in a new commit.
+# 3. Add exact-scope hard guard.
+# 4. Run static checks.
+# 5. Request explicit approval.
+# 6. Only then create ALLOW_QE_EXECUTION and submit exactly approved scope.
+
+echo "ERROR: disabled runner. Do not execute: $0" >&2
+exit 88
