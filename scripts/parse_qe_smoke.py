@@ -90,7 +90,19 @@ def parse_qe_output(pw_out: Path, pw_err: Optional[Path] = None) -> dict[str, An
         re.search(r"Error in routine|%%%%%%%%%%%%|stopping\s+.*error", text, re.I)
         or re.search(r"Error in routine|segmentation fault|SIGSEGV|CUDA|No such file", err_text, re.I)
     )
-    failure_class = classify_failure(text, err_text)
+    # nvfortran often prints these lines on normal QE termination.
+    # They are not GPU/runtime failures and must not pollute failure_class.
+    classification_err_text = "\n".join(
+        line for line in err_text.splitlines()
+        if not (
+            line.strip() == "FORTRAN STOP"
+            or (
+                line.strip().startswith("Warning: ieee_")
+                and line.strip().endswith(" is signaling")
+            )
+        )
+    )
+    failure_class = classify_failure(text, classification_err_text)
 
     energies = re.findall(r"!\s+total energy\s+=\s+([-+0-9.Ee]+)\s+Ry", text)
     total_energy_ry = float(energies[-1]) if energies else None
@@ -184,6 +196,16 @@ def main() -> int:
             result["case_name"] = meta.get("case_name")
         except Exception as exc:
             result["metadata_parse_warning"] = str(exc)
+
+    # Final consistency guard:
+    # A QE run that reached normal end without a fatal error must not keep
+    # a stale failure_class from benign stderr/profiler/runtime warning text.
+    if (
+        result.get("qe_normal_end")
+        and not result.get("fatal_error_detected")
+        and result.get("result_status") == "pass"
+    ):
+        result["failure_class"] = None
 
     args.out.write_text(json.dumps(result, indent=2, sort_keys=True) + "\n")
     return 0
