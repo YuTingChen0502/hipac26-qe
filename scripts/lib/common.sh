@@ -55,20 +55,42 @@ require_allow_qe_execution() {
 
 prepare_source() {
   mkdir -p "${QE_SRCROOT}"
+
   if [[ -d "${QE_SRC}" ]]; then
     log "source tree exists: ${QE_SRC}"
-  else
-    [[ -f "${QE_TARBALL}" ]] || die "tarball not found: ${QE_TARBALL}"
-    log "extracting ${QE_TARBALL} -> ${QE_SRCROOT}"
-    tar -xzf "${QE_TARBALL}" -C "${QE_SRCROOT}"
-    if [[ ! -d "${QE_SRC}" ]]; then
-      local top
-      top="$(tar -tzf "${QE_TARBALL}" | head -1 | cut -d/ -f1)"
-      [[ -d "${QE_SRCROOT}/${top}" ]] || die "cannot find extracted top dir: ${top}"
-      mv "${QE_SRCROOT}/${top}" "${QE_SRC}"
-    fi
+    return 0
   fi
-  sha256sum "${QE_TARBALL}" > "${QE_SRCROOT}/qe-7.5-source.tar.gz.sha256"
+
+  [[ -f "${QE_TARBALL}" ]] || die "tarball not found and source tree missing: ${QE_TARBALL} / ${QE_SRC}"
+
+  local lock="${QE_SRCROOT}/.prepare_source.lock"
+  (
+    flock -x 9
+
+    if [[ -d "${QE_SRC}" ]]; then
+      log "source tree exists after lock: ${QE_SRC}"
+      exit 0
+    fi
+
+    log "verifying tarball before extraction: ${QE_TARBALL}"
+    tar -tzf "${QE_TARBALL}" >/dev/null || die "tarball integrity check failed: ${QE_TARBALL}"
+
+    local tmp="${QE_SRCROOT}/.extract-qe-7.5-${SLURM_JOB_ID:-manual}-$$"
+    rm -rf "${tmp}"
+    mkdir -p "${tmp}"
+
+    log "extracting ${QE_TARBALL} -> ${tmp}"
+    tar -xzf "${QE_TARBALL}" -C "${tmp}"
+
+    local top
+    top="$(find "${tmp}" -mindepth 1 -maxdepth 1 -type d | head -n 1)"
+    [[ -n "${top}" && -d "${top}" ]] || die "cannot find extracted top dir under ${tmp}"
+
+    mv "${top}" "${QE_SRC}"
+    rm -rf "${tmp}"
+
+    sha256sum "${QE_TARBALL}" > "${QE_SRCROOT}/qe-7.5-source.tar.gz.sha256"
+  ) 9>"${lock}"
 }
 
 # BUILD-EXEC stage must not execute pw.x.
