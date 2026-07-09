@@ -190,6 +190,7 @@ def main() -> int:
         "repo_commit": repo_commit,
         "created_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "status": "prepared",
+        "launcher": "direct_singleton",
         "failure_class": None,
     }
 
@@ -198,7 +199,7 @@ def main() -> int:
     command = (
         f"export OMP_NUM_THREADS={args.cpus_per_task}\n"
         f"cd {shlex.quote(str(run_dir))}\n"
-        f"srun {shlex.quote(str(pwx))} -in {shlex.quote(str(copied_input))} "
+        f"{shlex.quote(str(pwx))} -in {shlex.quote(str(copied_input))} "
         f"> {shlex.quote(str(run_dir / 'pw.out'))} "
         f"2> {shlex.quote(str(run_dir / 'pw.err'))}\n"
     )

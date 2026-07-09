@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=BUILD-SMOKE-T001-G1-smoke-si8
+#SBATCH --account=ACD114087
 #SBATCH --partition=dev
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
@@ -26,6 +27,16 @@ BUILD_ID="${BUILD_ID:-G1-qe75-nvhpc259-gpu-base}"
 CASE_NAME="${CASE_NAME:-smoke-si8}"
 BUILD_HASH="${BUILD_HASH:-d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543}"
 PWX="${PWX:-${BUILDROOT}/${BUILD_ID}/install/bin/pw.x}"
+
+ENV_SCRIPT="${REPO}/scripts/env/nvhpc259.sh"
+if [ -f "${ENV_SCRIPT}" ]; then
+  # Load the same NVHPC/HPC-X runtime route used by the G1 build.
+  # shellcheck disable=SC1090
+  source "${ENV_SCRIPT}"
+else
+  module load x86-nvhpc/25.9 cmake/4.0.0
+fi
+
 
 mkdir -p "${RUNROOT}/slurm"
 
@@ -66,7 +77,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-12}"
 
 set +e
 cd "${RUN_DIR}"
-srun "${PWX_RESOLVED}" -in "${PW_INPUT}" > "${PW_OUT}" 2> "${PW_ERR}"
+"${PWX_RESOLVED}" -in "${PW_INPUT}" > "${PW_OUT}" 2> "${PW_ERR}"
 QE_EXIT=$?
 set -e
 
