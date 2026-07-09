@@ -75,6 +75,10 @@ def main() -> int:
     ap.add_argument("--electron-maxstep", type=int, default=2)
     ap.add_argument("--runtime-group-id", default="typeA_calib_g1_dev_1gpu_np1")
     ap.add_argument("--launcher", default="mpirun_np1_bind_to_none")
+    ap.add_argument("--candidate-role", default="performance_candidate")
+    ap.add_argument("--eligible-for-timing-comparison", default="false")
+    ap.add_argument("--exclusion-reason", default="calibration run; benchmark_valid=false")
+    ap.add_argument("--notes", default="")
     ap.add_argument("--sbatch-source", default="")
     args = ap.parse_args()
 
@@ -169,7 +173,7 @@ def main() -> int:
         "run_id": run_id,
         "run_dir": str(run_dir),
         "candidate_id": args.build_id,
-        "candidate_role": "performance_candidate",
+        "candidate_role": args.candidate_role,
         "build_hash": args.build_hash,
         "pw_x_path": str(pwx),
         "case_name": args.case_name,
@@ -196,10 +200,10 @@ def main() -> int:
         "launcher": args.launcher,
         "electron_maxstep_override": args.electron_maxstep,
         "runtime_group_id": args.runtime_group_id,
-        "eligible_for_timing_comparison": False,
-        "exclusion_reason": "calibration run; benchmark_valid=false",
+        "eligible_for_timing_comparison": args.eligible_for_timing_comparison.lower() == "true",
+        "exclusion_reason": args.exclusion_reason,
         "failure_class": None,
-        "notes": "TypeA calibration only; not benchmark; not performance claim.",
+        "notes": args.notes or "TypeA calibration/profiling only; not benchmark; not performance claim.",
     }
 
     metadata_json = run_dir / "metadata.json"
