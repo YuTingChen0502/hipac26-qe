@@ -190,7 +190,8 @@ def main() -> int:
         "repo_commit": repo_commit,
         "created_at_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
         "status": "prepared",
-        "launcher": "direct_singleton",
+        "opal_prefix": os.environ.get("OPAL_PREFIX", ""),
+        "launcher": "mpirun_np1_bind_to_none",
         "failure_class": None,
     }
 
@@ -199,7 +200,7 @@ def main() -> int:
     command = (
         f"export OMP_NUM_THREADS={args.cpus_per_task}\n"
         f"cd {shlex.quote(str(run_dir))}\n"
-        f"{shlex.quote(str(pwx))} -in {shlex.quote(str(copied_input))} "
+        f"mpirun --bind-to none -np 1 {shlex.quote(str(pwx))} -in {shlex.quote(str(copied_input))} "
         f"> {shlex.quote(str(run_dir / 'pw.out'))} "
         f"2> {shlex.quote(str(run_dir / 'pw.err'))}\n"
     )
@@ -207,7 +208,8 @@ def main() -> int:
 
     env_file = run_dir / "run_env.sh"
     env_file.write_text(
-        shell_env_line("RUN_DIR", str(run_dir))
+        shell_env_line("OPAL_PREFIX", os.environ.get("OPAL_PREFIX", ""))
+        + shell_env_line("RUN_DIR", str(run_dir))
         + shell_env_line("PWX_RESOLVED", str(pwx))
         + shell_env_line("PW_INPUT", str(copied_input))
         + shell_env_line("PW_OUT", str(run_dir / "pw.out"))

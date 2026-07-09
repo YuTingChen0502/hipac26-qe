@@ -65,6 +65,16 @@ else
 fi
 
 
+if ! command -v mpirun >/dev/null 2>&1; then
+  echo "ERROR: mpirun not found after NVHPC environment load" >&2
+  exit 94
+fi
+
+if ! mpirun --bind-to none -np 1 true >/dev/null 2>&1; then
+  echo "ERROR: mpirun cannot initialize (OPAL_PREFIX=${OPAL_PREFIX:-unset})" >&2
+  exit 94
+fi
+
 mkdir -p "${RUNROOT}/slurm"
 
 if [ ! -f "${TOKEN}" ]; then
@@ -104,7 +114,7 @@ export OMP_NUM_THREADS="${SLURM_CPUS_PER_TASK:-12}"
 
 set +e
 cd "${RUN_DIR}"
-"${PWX_RESOLVED}" -in "${PW_INPUT}" > "${PW_OUT}" 2> "${PW_ERR}"
+mpirun --bind-to none -np 1 "${PWX_RESOLVED}" -in "${PW_INPUT}" > "${PW_OUT}" 2> "${PW_ERR}"
 QE_EXIT=$?
 set -e
 

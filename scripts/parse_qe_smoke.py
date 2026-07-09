@@ -134,7 +134,7 @@ def parse_qe_output(pw_out: Path, pw_err: Optional[Path] = None) -> dict[str, An
         parser_status = "partial"
     else:
         result_status = "incomplete"
-        parser_status = "partial" if text.strip() else "missing"
+        parser_status = "partial" if (text.strip() or err_text.strip() or failure_class) else "missing"
 
     if failure_class is None and not smoke_pass:
         if not qe_started:
