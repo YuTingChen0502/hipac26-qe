@@ -1,0 +1,36 @@
+{
+  "schema_version": "hipac26_qe_nano4_config_v1",
+  "platform": "nano4",
+  "policy": {
+    "benchmark_valid_default": false,
+    "level5_enabled": false,
+    "submit_requires_human_approval": true,
+    "submit_wrapper_only": true,
+    "max_retries_default": 0
+  },
+  "paths": {
+    "repo_root": "/work/$USER/hipac26-qe",
+    "build_root": "/work/$USER/hipac26-qe-builds",
+    "pseudo_root": "/work/$USER/hipac26-qe-pseudos",
+    "run_root": "/work/$USER/hipac26-qe-runs",
+    "case_root": "/work/$USER/hipac26-qe-cases",
+    "profile": "/work/$USER/hipac26-qe/profiles/nano4_h200_nvhpc259.sh"
+  },
+  "slurm_defaults": {
+    "account": "ACD114087",
+    "partition": "dev",
+    "nodes": 1,
+    "gres": "gpu:1",
+    "time": "00:10:00"
+  },
+  "current_binary": {
+    "path": "/work/$USER/hipac26-qe-builds/nano4-gpu-nvhpc259-qe75-f1-retry005/build/PW/src/pw.x",
+    "sha256": "36c2dfaa71441c0e80e6860824bd5e3b0ee316b0b8328e37c9f2b2c5c6ee8007",
+    "status": "candidate_gpu_enabled_build_not_optimized_claim"
+  },
+  "current_pseudo_example": {
+    "path": "/work/$USER/hipac26-qe-pseudos/pslibrary-1.0.0/Si.pbe-n-rrkjus_psl.1.0.0.UPF",
+    "sha256": "669fb75395a9d26973b0ea1ce8223bbcb30d3396c5d48bf5e794d1243c52375a",
+    "status": "example_only_not_repo_case"
+  }
+}
