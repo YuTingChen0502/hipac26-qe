@@ -2,7 +2,7 @@
 #SBATCH -J qe-smoke-gpu
 #SBATCH -N 1
 #SBATCH --ntasks-per-node=1
-#SBATCH --cpus-per-task=14
+#SBATCH --cpus-per-task=12
 #SBATCH --gres=gpu:1
 #SBATCH -t 00:20:00
 set -euo pipefail

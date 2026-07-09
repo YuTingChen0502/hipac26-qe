@@ -24,7 +24,7 @@ sbatch \
   --partition="${GPU_PART}" \
   --nodes=1 \
   --ntasks=1 \
-  --cpus-per-task=16 \
+  --cpus-per-task=12 \
   --gres=gpu:1 \
   --time=02:00:00 \
   --job-name="qeb-${CAND}" \
