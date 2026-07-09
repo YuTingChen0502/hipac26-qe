@@ -28,13 +28,40 @@ CASE_NAME="${CASE_NAME:-smoke-si8}"
 BUILD_HASH="${BUILD_HASH:-d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543}"
 PWX="${PWX:-${BUILDROOT}/${BUILD_ID}/install/bin/pw.x}"
 
+# Initialize environment modules in non-interactive Slurm shell.
+if ! command -v module >/dev/null 2>&1; then
+  if [ -f /etc/profile.d/modules.sh ]; then
+    # shellcheck disable=SC1091
+    source /etc/profile.d/modules.sh
+  elif [ -f /usr/share/Modules/init/bash ]; then
+    # shellcheck disable=SC1091
+    source /usr/share/Modules/init/bash
+  fi
+fi
+
+# Provide the same helper expected by scripts/env/*.sh.
+COMMON="${REPO}/scripts/lib/common.sh"
+if [ -f "${COMMON}" ]; then
+  # shellcheck disable=SC1090
+  source "${COMMON}"
+fi
+
+if ! command -v ensure_module >/dev/null 2>&1; then
+  ensure_module() {
+    local mod
+    for mod in "$@"; do
+      module load "${mod}"
+    done
+  }
+fi
+
 ENV_SCRIPT="${REPO}/scripts/env/nvhpc259.sh"
 if [ -f "${ENV_SCRIPT}" ]; then
   # Load the same NVHPC/HPC-X runtime route used by the G1 build.
   # shellcheck disable=SC1090
   source "${ENV_SCRIPT}"
 else
-  module load x86-nvhpc/25.9 cmake/4.0.0
+  ensure_module x86-nvhpc/25.9 cmake/4.0.0
 fi
 
 

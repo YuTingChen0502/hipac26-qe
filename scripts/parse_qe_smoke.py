@@ -30,6 +30,21 @@ def parse_qe_time_to_sec(s: str) -> Optional[float]:
 def classify_failure(text: str, pw_err: str = "") -> Optional[str]:
     both = f"{text}\n{pw_err}".lower()
 
+    # MPI/OpenMPI/HPC-X startup failures often also contain "No such file"
+    # for missing OpenMPI help text. Classify them before generic path failures.
+    if (
+        "mpi_init" in both
+        or "mpi_init_thread" in both
+        or "opal_init" in both
+        or "orte_init" in both
+        or "openmpi" in both
+        or "help-opal-runtime" in both
+        or "help-mpi-runtime" in both
+        or "help-orte-runtime" in both
+        or "pmix" in both
+    ):
+        return "mpi_runtime_failure"
+
     if "error in routine" in both:
         if "pseudo" in both and ("not found" in both or "file" in both):
             return "input_pseudo_path_failure"
@@ -37,8 +52,6 @@ def classify_failure(text: str, pw_err: str = "") -> Optional[str]:
             return "input_syntax_failure"
         if "cuda" in both or "gpu" in both:
             return "gpu_runtime_failure"
-        if "mpi" in both or "pmix" in both:
-            return "mpi_runtime_failure"
         return "qe_fatal_runtime_failure"
 
     if "pseudo" in both and ("not found" in both or "no such file" in both):
