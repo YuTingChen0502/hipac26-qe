@@ -1,0 +1,173 @@
+{
+  "schema_version": "hipac26_qe_case_registry_v1",
+  "registry_status": "preflight_role_freeze",
+  "claim_guards": {
+    "benchmark_valid": false,
+    "performance_claim_allowed": false,
+    "optimization_claim_allowed": false
+  },
+  "lifecycle_values": [
+    "verified",
+    "needs_nano4_verification",
+    "planned",
+    "blocked"
+  ],
+  "qe_submit_eligibility_policy": {
+    "required_lifecycle": "verified",
+    "require_case_identity_match": true,
+    "require_input_path_match": true,
+    "require_input_sha256_match": true,
+    "require_pseudo_identity_match": true,
+    "require_pseudo_sha256_match": true,
+    "require_approved_runtime_role": true,
+    "missing_identity_or_hash_fails_closed": true
+  },
+  "cases": [
+    {
+      "case_id": "typeA-au111-manyk-emax5",
+      "display_name": "TypeA Au(111) many-k emax5",
+      "case_family": "typeA-au111-manyk",
+      "role": "two_node_readiness_diagnostic",
+      "lifecycle": "needs_nano4_verification",
+      "selected": true,
+      "separate_workload": false,
+      "qe_submit_eligible": false,
+      "approved_runtime_roles": [
+        "two_node_readiness_diagnostic"
+      ],
+      "input": {
+        "path": null,
+        "sha256": null,
+        "identity_status": "needs_nano4_verification"
+      },
+      "pseudos": {
+        "files": [],
+        "sha256": {},
+        "identity_status": "needs_nano4_verification"
+      },
+      "blocked_reason": null,
+      "notes": "Canonical exact input path/hash and Au pseudo identities/hashes are not yet frozen. Render/validation preflight only."
+    },
+    {
+      "case_id": "typeA-au111-manyk-emax20",
+      "display_name": "TypeA Au(111) many-k emax20",
+      "case_family": "typeA-au111-manyk",
+      "role": "longer_stabilization",
+      "lifecycle": "planned",
+      "selected": false,
+      "separate_workload": false,
+      "qe_submit_eligible": false,
+      "approved_runtime_roles": [
+        "longer_stabilization"
+      ],
+      "input": {
+        "path": null,
+        "sha256": null,
+        "identity_status": "not_frozen"
+      },
+      "pseudos": {
+        "files": [],
+        "sha256": {},
+        "identity_status": "not_frozen"
+      },
+      "blocked_reason": null,
+      "notes": "Planned only; no canonical input or pseudo identity is frozen."
+    },
+    {
+      "case_id": "typeA-au111-manyk-full",
+      "display_name": "TypeA Au(111) many-k normal/full maxstep",
+      "case_family": "typeA-au111-manyk",
+      "role": "longer_full_convergence",
+      "lifecycle": "planned",
+      "selected": false,
+      "separate_workload": false,
+      "qe_submit_eligible": false,
+      "approved_runtime_roles": [
+        "longer_full_convergence"
+      ],
+      "input": {
+        "path": null,
+        "sha256": null,
+        "identity_status": "not_frozen"
+      },
+      "pseudos": {
+        "files": [],
+        "sha256": {},
+        "identity_status": "not_frozen"
+      },
+      "blocked_reason": null,
+      "notes": "Normal/full electron_maxstep workload remains planned."
+    },
+    {
+      "case_id": "typeA-au111-manyk-nosym",
+      "display_name": "TypeA Au(111) many-k nosym diagnostic",
+      "case_family": "typeA-au111-manyk-nosym",
+      "role": "conditional_kpool_diagnostic",
+      "lifecycle": "planned",
+      "selected": false,
+      "separate_workload": true,
+      "qe_submit_eligible": false,
+      "approved_runtime_roles": [
+        "conditional_kpool_diagnostic"
+      ],
+      "input": {
+        "path": null,
+        "sha256": null,
+        "identity_status": "not_frozen"
+      },
+      "pseudos": {
+        "files": [],
+        "sha256": {},
+        "identity_status": "not_frozen"
+      },
+      "blocked_reason": null,
+      "notes": "Conditional diagnostic only. It is a separate workload and must not be treated as equivalent to the canonical TypeA case."
+    },
+    {
+      "case_id": "typical-profiling-unselected",
+      "display_name": "Typical profiling case not yet selected",
+      "case_family": "typical-profiling",
+      "role": "typical_case_profiling",
+      "lifecycle": "planned",
+      "selected": false,
+      "separate_workload": true,
+      "qe_submit_eligible": false,
+      "approved_runtime_roles": [],
+      "input": {
+        "path": null,
+        "sha256": null,
+        "identity_status": "not_selected"
+      },
+      "pseudos": {
+        "files": [],
+        "sha256": {},
+        "identity_status": "not_selected"
+      },
+      "blocked_reason": null,
+      "notes": "Representative typical profiling testcase has not been selected."
+    },
+    {
+      "case_id": "official-scale-unfrozen",
+      "display_name": "Official/representative-scale case not frozen",
+      "case_family": "official-representative-scale",
+      "role": "official_representative_scale",
+      "lifecycle": "blocked",
+      "selected": false,
+      "separate_workload": true,
+      "qe_submit_eligible": false,
+      "approved_runtime_roles": [],
+      "input": {
+        "path": null,
+        "sha256": null,
+        "identity_status": "not_available"
+      },
+      "pseudos": {
+        "files": [],
+        "sha256": {},
+        "identity_status": "not_available"
+      },
+      "blocked_reason": "no_frozen_official_input",
+      "notes": "No official or approved representative-scale input has been frozen. No official benchmark claim is permitted."
+    }
+  ]
+}

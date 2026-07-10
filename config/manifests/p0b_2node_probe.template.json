@@ -1,0 +1,35 @@
+{
+  "schema_version": "hipac26_qe_manifest_v2",
+  "trial_id": "P1A-T001",
+  "autonomy_level": "L1",
+  "benchmark_valid": false,
+  "performance_claim_allowed": false,
+  "optimization_claim_allowed": false,
+  "approved_by_human": false,
+  "allowed_submit": false,
+  "max_retries": 0,
+  "run_root": "/work/$USER/hipac26-qe-runs",
+  "jobs": [
+    {
+      "config_id": "cfg001_p1a_t001_probe",
+      "job_kind": "environment_probe",
+      "probe_profile": "basic_environment",
+      "run_dir": "/work/$USER/hipac26-qe-runs/p1a-t001-probe/cfg001_p1a_t001_probe",
+      "slurm": {
+        "account": "ACD114087",
+        "partition": "16gpus",
+        "nodes": 2,
+        "ntasks": 16,
+        "ntasks_per_node": 8,
+        "cpus_per_task": 12,
+        "gpus_per_node": 8,
+        "total_gpus": 16,
+        "gres": "gpu:8",
+        "time": "00:10:00"
+      },
+      "runtime": {
+        "omp_num_threads": 12
+      }
+    }
+  ]
+}

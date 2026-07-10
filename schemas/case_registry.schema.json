@@ -1,0 +1,318 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hipac26 QE testcase registry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "registry_status",
+    "claim_guards",
+    "lifecycle_values",
+    "qe_submit_eligibility_policy",
+    "cases"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "hipac26_qe_case_registry_v1"
+    },
+    "registry_status": {
+      "const": "preflight_role_freeze"
+    },
+    "claim_guards": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "benchmark_valid",
+        "performance_claim_allowed",
+        "optimization_claim_allowed"
+      ],
+      "properties": {
+        "benchmark_valid": {
+          "const": false
+        },
+        "performance_claim_allowed": {
+          "const": false
+        },
+        "optimization_claim_allowed": {
+          "const": false
+        }
+      }
+    },
+    "lifecycle_values": {
+      "type": "array",
+      "const": [
+        "verified",
+        "needs_nano4_verification",
+        "planned",
+        "blocked"
+      ]
+    },
+    "qe_submit_eligibility_policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "required_lifecycle",
+        "require_case_identity_match",
+        "require_input_path_match",
+        "require_input_sha256_match",
+        "require_pseudo_identity_match",
+        "require_pseudo_sha256_match",
+        "require_approved_runtime_role",
+        "missing_identity_or_hash_fails_closed"
+      ],
+      "properties": {
+        "required_lifecycle": {
+          "const": "verified"
+        },
+        "require_case_identity_match": {
+          "const": true
+        },
+        "require_input_path_match": {
+          "const": true
+        },
+        "require_input_sha256_match": {
+          "const": true
+        },
+        "require_pseudo_identity_match": {
+          "const": true
+        },
+        "require_pseudo_sha256_match": {
+          "const": true
+        },
+        "require_approved_runtime_role": {
+          "const": true
+        },
+        "missing_identity_or_hash_fails_closed": {
+          "const": true
+        }
+      }
+    },
+    "cases": {
+      "type": "array",
+      "minItems": 6,
+      "uniqueItems": true,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "case_id",
+          "display_name",
+          "case_family",
+          "role",
+          "lifecycle",
+          "selected",
+          "separate_workload",
+          "qe_submit_eligible",
+          "approved_runtime_roles",
+          "input",
+          "pseudos",
+          "blocked_reason",
+          "notes"
+        ],
+        "properties": {
+          "case_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]*$"
+          },
+          "display_name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "case_family": {
+            "type": "string",
+            "minLength": 1
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "two_node_readiness_diagnostic",
+              "longer_stabilization",
+              "longer_full_convergence",
+              "conditional_kpool_diagnostic",
+              "typical_case_profiling",
+              "official_representative_scale"
+            ]
+          },
+          "lifecycle": {
+            "type": "string",
+            "enum": [
+              "verified",
+              "needs_nano4_verification",
+              "planned",
+              "blocked"
+            ]
+          },
+          "selected": {
+            "type": "boolean"
+          },
+          "separate_workload": {
+            "type": "boolean"
+          },
+          "qe_submit_eligible": {
+            "type": "boolean"
+          },
+          "approved_runtime_roles": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "input": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "path",
+              "sha256",
+              "identity_status"
+            ],
+            "properties": {
+              "path": {
+                "type": [
+                  "string",
+                  "null"
+                ]
+              },
+              "sha256": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "pattern": "^[a-fA-F0-9]{64}$"
+              },
+              "identity_status": {
+                "type": "string",
+                "enum": [
+                  "verified",
+                  "needs_nano4_verification",
+                  "not_frozen",
+                  "not_selected",
+                  "not_available"
+                ]
+              }
+            }
+          },
+          "pseudos": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "files",
+              "sha256",
+              "identity_status"
+            ],
+            "properties": {
+              "files": {
+                "type": "array",
+                "uniqueItems": true,
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "sha256": {
+                "type": "object",
+                "additionalProperties": {
+                  "type": "string",
+                  "pattern": "^[a-fA-F0-9]{64}$"
+                }
+              },
+              "identity_status": {
+                "type": "string",
+                "enum": [
+                  "verified",
+                  "needs_nano4_verification",
+                  "not_frozen",
+                  "not_selected",
+                  "not_available"
+                ]
+              }
+            }
+          },
+          "blocked_reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "notes": {
+            "type": "string"
+          }
+        },
+        "allOf": [
+          {
+            "if": {
+              "properties": {
+                "lifecycle": {
+                  "const": "verified"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "qe_submit_eligible": {
+                  "const": true
+                },
+                "approved_runtime_roles": {
+                  "minItems": 1
+                },
+                "input": {
+                  "properties": {
+                    "path": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sha256": {
+                      "type": "string",
+                      "pattern": "^[a-fA-F0-9]{64}$"
+                    },
+                    "identity_status": {
+                      "const": "verified"
+                    }
+                  }
+                },
+                "pseudos": {
+                  "properties": {
+                    "files": {
+                      "minItems": 1
+                    },
+                    "sha256": {
+                      "minProperties": 1
+                    },
+                    "identity_status": {
+                      "const": "verified"
+                    }
+                  }
+                }
+              }
+            },
+            "else": {
+              "properties": {
+                "qe_submit_eligible": {
+                  "const": false
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "lifecycle": {
+                  "const": "blocked"
+                }
+              }
+            },
+            "then": {
+              "properties": {
+                "blocked_reason": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}

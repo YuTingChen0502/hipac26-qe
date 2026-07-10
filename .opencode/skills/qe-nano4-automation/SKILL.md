@@ -13,8 +13,18 @@ execution_allowed=false
 scheduler_submit_allowed=false
 qe_execution_allowed=false
 benchmark_valid=false
+performance_claim_allowed=false
+optimization_claim_allowed=false
+two_node_environment_verified=false
+two_node_qe_submit_enabled=false
+environment_probe_submit_enabled=false
 level5_enabled=false
 ```
+
+The bounded phase executor skill (`qe-nano4-bounded-phase-executor`) is a
+distinct phase-oriented workflow for one Control Center-approved gate. This
+legacy/manual automation skill remains the general repository safety and
+wrapper-only workflow policy. If both apply, follow the stricter boundary.
 
 ## Repository scope
 
@@ -45,6 +55,10 @@ manifest
   -> parse
   -> summarize
 ```
+
+Prepared, rendered, validated, approved, submitted, running, completed, parsed,
+accepted, and pass-closed are distinct states. Rendering or validation is not
+approval, submission, acceptance, or pass-closure.
 
 The only allowed automation entrypoint is:
 
@@ -106,6 +120,8 @@ Until an official benchmark gate exists:
 
 ```text
 benchmark_valid=false
+performance_claim_allowed=false
+optimization_claim_allowed=false
 ```
 
 Allowed wording:

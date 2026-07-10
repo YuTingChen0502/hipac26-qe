@@ -1,12 +1,17 @@
 {
-  "schema_version": "hipac26_qe_nano4_config_v1",
+  "schema_version": "hipac26_qe_nano4_config_v2",
   "platform": "nano4",
   "policy": {
     "benchmark_valid_default": false,
+    "performance_claim_allowed_default": false,
+    "optimization_claim_allowed_default": false,
     "level5_enabled": false,
     "submit_requires_human_approval": true,
     "submit_wrapper_only": true,
-    "max_retries_default": 0
+    "max_retries_default": 0,
+    "two_node_environment_verified": false,
+    "two_node_qe_submit_enabled": false,
+    "environment_probe_submit_enabled": false
   },
   "paths": {
     "repo_root": "/work/$USER/hipac26-qe",
@@ -14,19 +19,127 @@
     "pseudo_root": "/work/$USER/hipac26-qe-pseudos",
     "run_root": "/work/$USER/hipac26-qe-runs",
     "case_root": "/work/$USER/hipac26-qe-cases",
-    "profile": "/work/$USER/hipac26-qe/profiles/nano4_h200_nvhpc259.sh"
+    "local_evidence_root": "/work/$USER/hipac26-qe-local",
+    "profile": "/work/$USER/hipac26-qe/profiles/nano4_h200_nvhpc259.sh",
+    "case_registry": "/work/$USER/hipac26-qe/config/case_registry.json",
+    "manifest_schema": "/work/$USER/hipac26-qe/schemas/manifest.schema.json"
+  },
+  "hardware": {
+    "cpu_model": "Intel Xeon Platinum 8480+",
+    "sockets_per_node": 2,
+    "physical_cpu_cores_per_socket": 56,
+    "physical_cpu_cores_per_node": 112,
+    "allocatable_cpu_tres_per_node": 104,
+    "gpu_model": "NVIDIA H200",
+    "gpus_per_node": 8,
+    "max_cpu_cores_per_requested_gpu": 12,
+    "maximum_supported_nodes_for_preflight": 2,
+    "host_memory_per_node_observed": "2 TB",
+    "host_memory_unit_normalization_status": "not_verified"
+  },
+  "accounts": {
+    "authorized": [
+      "ACD114087",
+      "GOV114009"
+    ],
+    "forbidden": [
+      "ACD115059"
+    ]
+  },
+  "partitions": {
+    "dev": {
+      "authorized_accounts": [
+        "ACD114087",
+        "GOV114009"
+      ],
+      "minimum_total_gpus": 1,
+      "maximum_total_gpus_by_account": {
+        "ACD114087": 32,
+        "GOV114009": 32
+      },
+      "maximum_walltime_seconds": 14400,
+      "maximum_running_jobs_per_user": 10,
+      "maximum_pending_jobs_per_user": 10
+    },
+    "8gpus": {
+      "authorized_accounts": [
+        "ACD114087",
+        "GOV114009"
+      ],
+      "minimum_total_gpus": 1,
+      "maximum_total_gpus_by_account": {
+        "ACD114087": 32,
+        "GOV114009": 32
+      },
+      "maximum_walltime_seconds": 172800,
+      "maximum_running_jobs_per_user": 8,
+      "maximum_pending_jobs_per_user": 10
+    },
+    "16gpus": {
+      "authorized_accounts": [
+        "ACD114087",
+        "GOV114009"
+      ],
+      "minimum_total_gpus": 8,
+      "maximum_total_gpus_by_account": {
+        "ACD114087": 32,
+        "GOV114009": 32
+      },
+      "maximum_walltime_seconds": 172800,
+      "maximum_running_jobs_per_user": 6,
+      "maximum_pending_jobs_per_user": 8
+    },
+    "32gpus": {
+      "authorized_accounts": [
+        "ACD114087",
+        "GOV114009"
+      ],
+      "minimum_total_gpus": 16,
+      "maximum_total_gpus_by_account": {
+        "ACD114087": 32,
+        "GOV114009": 32
+      },
+      "maximum_walltime_seconds": 86400,
+      "maximum_running_jobs_per_user": 4,
+      "maximum_pending_jobs_per_user": 6
+    },
+    "64gpus": {
+      "authorized_accounts": [
+        "ACD114087",
+        "GOV114009"
+      ],
+      "minimum_total_gpus": 32,
+      "maximum_total_gpus_by_account": {
+        "ACD114087": 64,
+        "GOV114009": 64
+      },
+      "maximum_walltime_seconds": 86400,
+      "maximum_running_jobs_per_user": 2,
+      "maximum_pending_jobs_per_user": 4
+    }
   },
   "slurm_defaults": {
     "account": "ACD114087",
     "partition": "dev",
     "nodes": 1,
+    "ntasks": 1,
+    "ntasks_per_node": 1,
+    "cpus_per_task": 12,
+    "gpus_per_node": 1,
+    "total_gpus": 1,
     "gres": "gpu:1",
     "time": "00:10:00"
   },
   "current_binary": {
     "path": "/work/$USER/hipac26-qe-builds/nano4-gpu-nvhpc259-qe75-f1-retry005/build/PW/src/pw.x",
     "sha256": "36c2dfaa71441c0e80e6860824bd5e3b0ee316b0b8328e37c9f2b2c5c6ee8007",
-    "status": "candidate_gpu_enabled_build_not_optimized_claim"
+    "status": "candidate_gpu_enabled_build_not_optimized_claim",
+    "identity_status": "needs_nano4_verification",
+    "known_discrepancy": {
+      "configured_path": "/work/$USER/hipac26-qe-builds/nano4-gpu-nvhpc259-qe75-f1-retry005/build/PW/src/pw.x",
+      "accepted_g1_smoke_path": "/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x",
+      "resolution": "deferred_to_compute_side_binary_revalidation"
+    }
   },
   "current_pseudo_example": {
     "path": "/work/$USER/hipac26-qe-pseudos/pslibrary-1.0.0/Si.pbe-n-rrkjus_psl.1.0.0.UPF",
