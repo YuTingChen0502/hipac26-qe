@@ -493,6 +493,22 @@ class QERunCtlTests(unittest.TestCase):
         for forbidden in ["QE_BIN", "QE_INPUT", "qe.out", " -in "]:
             self.assertNotIn(forbidden, script)
 
+        recovery = clone(template)
+        recovery["trial_id"] = "P1A-R001"
+        qe_runctl.validate_manifest(
+            recovery,
+            submit_mode=False,
+            strict_files=False,
+            config=qe_runctl.load_config(),
+            case_registry=self.registry,
+        )
+        recovery_script = qe_runctl.render_job_script(
+            recovery["jobs"][0],
+            manifest=recovery,
+            config=qe_runctl.load_config(),
+        )
+        self.assertIn("trial=P1A-R001", recovery_script)
+
     def test_environment_snapshot_is_allowlisted_and_secret_safe(self):
         template = qe_runctl.read_json(REPO_ROOT / "config" / "manifests" / "p0b_2node_probe.template.json")
         script = qe_runctl.render_job_script(template["jobs"][0], manifest=template, config=qe_runctl.load_config())

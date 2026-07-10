@@ -674,7 +674,7 @@ def validate_manifest_v2(
     if manifest["schema_version"] != MANIFEST_V2:
         fail("unsupported manifest v2 schema_version")
     if not re.fullmatch(
-        r"[A-Z0-9]+-T[0-9]{3}",
+        r"[A-Z0-9]+-[TR][0-9]{3}",
         require_string(manifest["trial_id"], "trial_id"),
     ):
         fail("invalid trial_id")
@@ -1588,6 +1588,10 @@ int main(int argc, char **argv) {
 }
 '''
     quoted_mpi_source = shlex.quote(mpi_source)
+    probe_trial_id = require_string(
+        manifest.get("trial_id", "P1A-T001") if manifest else "P1A-T001",
+        "trial_id",
+    )
 
     return f"""#!/usr/bin/env bash
 {directives}
@@ -1619,7 +1623,7 @@ printf 'requested_gpus={slurm['total_gpus']}\n'
 mkdir -p "$RUN_DIR"
 PROBE_MARKER="$RUN_DIR/p1a_t001_shared_fs_marker.txt"
 export PROBE_MARKER
-printf 'hipac26-p1a-t001-shared-marker trial=P1A-T001 config={job['config_id']}\n' > "$PROBE_MARKER"
+printf 'hipac26-p1a-t001-shared-marker trial={probe_trial_id} config={job['config_id']}\n' > "$PROBE_MARKER"
 printf 'shared_marker_path=%s\n' "$PROBE_MARKER"
 sha256sum "$PROBE_MARKER"
 
