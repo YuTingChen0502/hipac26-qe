@@ -467,6 +467,11 @@ class QERunCtlTests(unittest.TestCase):
     def test_p1a_probe_renderer_static_checks(self):
         template = qe_runctl.read_json(REPO_ROOT / "config" / "manifests" / "p0b_2node_probe.template.json")
         script = qe_runctl.render_job_script(template["jobs"][0], manifest=template, config=qe_runctl.load_config())
+        lines = script.splitlines()
+        first_body = next(i for i, line in enumerate(lines) if line and not line.startswith("#"))
+        self.assertEqual(lines[first_body], "set -euo pipefail")
+        self.assertTrue(any(line.startswith("#SBATCH -A ACD114087") for line in lines[1:first_body]))
+        self.assertTrue(any(line.startswith("#SBATCH -p 16gpus") for line in lines[1:first_body]))
         required = [
             "allocation_nodelist", "SLURM_JOB_ID", "SLURM_NNODES", "SLURM_NODEID",
             "SLURM_PROCID", "SLURM_LOCALID", "task_hostname", "EXPECTED_TASKS",

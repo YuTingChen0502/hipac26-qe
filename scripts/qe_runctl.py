@@ -1406,8 +1406,8 @@ def render_qe_job_script(job: dict[str, Any]) -> str:
     qe_command = " ".join(command_parts)
 
     return f"""#!/usr/bin/env bash
-set -euo pipefail
 {directives}
+set -euo pipefail
 
 export OMP_NUM_THREADS={runtime['omp_num_threads']}
 export QE_BIN={binary_path}
@@ -1590,8 +1590,8 @@ int main(int argc, char **argv) {
     quoted_mpi_source = shlex.quote(mpi_source)
 
     return f"""#!/usr/bin/env bash
-set -euo pipefail
 {directives}
+set -euo pipefail
 
 export OMP_NUM_THREADS={runtime['omp_num_threads']}
 RUN_ROOT={shlex.quote(run_root)}
