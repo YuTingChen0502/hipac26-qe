@@ -10,6 +10,13 @@
     "submit_wrapper_only": true,
     "max_retries_default": 0,
     "two_node_environment_verified": true,
+    "two_node_environment_verified_evidence": {
+      "accepted_gate": "P1-B pass-closed via P1-A-R001 recovery evidence",
+      "review_dir": "/work/$USER/hipac26-qe-local/control_center/p1a_r001_recovery_review/",
+      "archive": "/work/$USER/hipac26-qe-local/control_center/p1a_r001_recovery_review.tgz",
+      "archive_sha256": "e3b4de7aea01356cab6d8627fe1c9bf8122eae56df4cd266bfbcbcac1906ab65",
+      "internal_sha256sums": "verified"
+    },
     "two_node_qe_submit_enabled": false,
     "environment_probe_submit_enabled": false
   },
