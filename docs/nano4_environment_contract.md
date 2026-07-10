@@ -1,6 +1,6 @@
 # Nano4 environment contract — P0-B/P0-C
 
-Status: prepared/validated policy contract for review only.
+Status: Chat C entry policy after Control Center accepted P1-B as pass-closed.
 
 ## Machine-readable policy
 
@@ -10,7 +10,7 @@ Status: prepared/validated policy contract for review only.
 benchmark_valid_default=false
 performance_claim_allowed_default=false
 optimization_claim_allowed_default=false
-two_node_environment_verified=false
+two_node_environment_verified=true
 two_node_qe_submit_enabled=false
 environment_probe_submit_enabled=false
 max_retries_default=0
@@ -36,6 +36,24 @@ The P1-A probe records only a deterministic allowlist of runtime environment var
 
 Prepared, rendered, and validated artifacts are review evidence only. They are not approved, submitted, running, completed, parsed, accepted, or pass-closed evidence. Only Control Center can approve a next action or close a gate.
 
-## Binary discrepancy
+## Accepted two-node environment evidence
 
-The configured candidate binary path and the accepted G1 smoke binary path remain discrepant. The contract is to preserve the mismatch, mark identity as needing Nano4 verification, and defer compute-side identity/linkage verification. This contract does not authorize running `pw.x` or fabricating binary evidence.
+`two_node_environment_verified=true` is based on accepted P1-A-R001 recovery evidence:
+
+- `/work/$USER/hipac26-qe-local/control_center/p1a_r001_recovery_review/`
+- `/work/$USER/hipac26-qe-local/control_center/p1a_r001_recovery_review.tgz`
+- archive SHA-256: `e3b4de7aea01356cab6d8627fe1c9bf8122eae56df4cd266bfbcbcac1906ab65`
+- extracted `SHA256SUMS`: verified during Chat C entry.
+
+The flag records only the accepted no-QE two-node environment proof. It does not
+enable two-node QE submission by itself; `two_node_qe_submit_enabled` remains
+false by default and must be temporarily enabled only for a single approved
+wrapper submission.
+
+## Production binary identity
+
+The accepted G1 production binary for Chat C is
+`/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x`
+with SHA-256 `d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543`.
+This identity is diagnostic/readiness-only and carries no benchmark,
+performance, or optimization claim.

@@ -9,7 +9,7 @@
     "submit_requires_human_approval": true,
     "submit_wrapper_only": true,
     "max_retries_default": 0,
-    "two_node_environment_verified": false,
+    "two_node_environment_verified": true,
     "two_node_qe_submit_enabled": false,
     "environment_probe_submit_enabled": false
   },
@@ -131,14 +131,15 @@
     "time": "00:10:00"
   },
   "current_binary": {
-    "path": "/work/$USER/hipac26-qe-builds/nano4-gpu-nvhpc259-qe75-f1-retry005/build/PW/src/pw.x",
-    "sha256": "36c2dfaa71441c0e80e6860824bd5e3b0ee316b0b8328e37c9f2b2c5c6ee8007",
-    "status": "candidate_gpu_enabled_build_not_optimized_claim",
-    "identity_status": "needs_nano4_verification",
-    "known_discrepancy": {
-      "configured_path": "/work/$USER/hipac26-qe-builds/nano4-gpu-nvhpc259-qe75-f1-retry005/build/PW/src/pw.x",
-      "accepted_g1_smoke_path": "/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x",
-      "resolution": "deferred_to_compute_side_binary_revalidation"
+    "path": "/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x",
+    "sha256": "d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543",
+    "status": "accepted_g1_production_binary_no_performance_claim",
+    "identity_status": "verified_by_read_only_p2_entry_preflight",
+    "accepted_evidence": {
+      "chat_b_recovery_bundle": "/work/$USER/hipac26-qe-local/control_center/p1a_r001_recovery_review.tgz",
+      "chat_b_recovery_bundle_sha256": "e3b4de7aea01356cab6d8627fe1c9bf8122eae56df4cd266bfbcbcac1906ab65",
+      "p1a_r001_job_id": "176461",
+      "p1a_r001_internal_hashes": "verified by sha256sum -c SHA256SUMS in p1a_r001_recovery_review"
     }
   },
   "current_pseudo_example": {

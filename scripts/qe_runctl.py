@@ -1477,10 +1477,6 @@ def render_environment_probe_script(
         config_data.get("current_binary"),
         "config.current_binary",
     )
-    discrepancy = require_object(
-        current_binary.get("known_discrepancy"),
-        "config.current_binary.known_discrepancy",
-    )
 
     run_dir = require_absolute_path(job["run_dir"], "run_dir")
     run_root = require_absolute_path(
@@ -1496,8 +1492,8 @@ def render_environment_probe_script(
         "config.current_binary.path",
     )
     accepted_g1_path = require_absolute_path(
-        discrepancy.get("accepted_g1_smoke_path"),
-        "config.current_binary.known_discrepancy.accepted_g1_smoke_path",
+        current_binary.get("path"),
+        "config.current_binary.path",
     )
 
     directives = render_slurm_directives(
@@ -1702,7 +1698,7 @@ inspect_binary_identity() {{
 }}
 inspect_binary_identity configured_current_binary "$CONFIGURED_BINARY_PATH"
 inspect_binary_identity accepted_g1_smoke_binary "$ACCEPTED_G1_SMOKE_PATH"
-printf 'binary_identity_discrepancy_status=needs_nano4_verification\n'
+printf 'binary_identity_status=accepted_g1_production_binary_no_performance_claim\n'
 
 command -v srun >/dev/null 2>&1 || {{
     echo 'ERROR: srun unavailable inside allocation' >&2
@@ -1823,7 +1819,7 @@ def validate_rendered_script_for_job(
             "mpirun --bind-to none",
             "CONFIGURED_BINARY_PATH",
             "ACCEPTED_G1_SMOKE_PATH",
-            "binary_identity_discrepancy_status=needs_nano4_verification",
+            "binary_identity_status=accepted_g1_production_binary_no_performance_claim",
         )
         for token in required_tokens:
             if token not in script:

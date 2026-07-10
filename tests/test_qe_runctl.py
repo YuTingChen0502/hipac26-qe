@@ -100,6 +100,34 @@ class QERunCtlTests(unittest.TestCase):
     def controller_config_patch(self):
         return mock.patch.object(qe_runctl, "load_config", return_value=self.config)
 
+    def test_chatc_accepted_environment_flags_and_claim_guards(self):
+        policy = qe_runctl.load_config()["policy"]
+        self.assertTrue(policy["two_node_environment_verified"])
+        self.assertFalse(policy["environment_probe_submit_enabled"])
+        self.assertFalse(policy["two_node_qe_submit_enabled"])
+        self.assertFalse(policy["benchmark_valid_default"])
+        self.assertFalse(policy["performance_claim_allowed_default"])
+        self.assertFalse(policy["optimization_claim_allowed_default"])
+
+    def test_environment_flag_alone_cannot_bypass_qe_enablement(self):
+        manifest = self.manifest_v2("qe", gpus_per_node=1, npools=1, run_dir=str(self.run_root / "qe_env_true_qe_disabled"))
+        manifest["approved_by_human"] = True
+        manifest["allowed_submit"] = True
+        registry = self.verified_registry_for_manifest(manifest)
+        config = clone(self.config)
+        config["policy"]["two_node_environment_verified"] = True
+        config["policy"]["two_node_qe_submit_enabled"] = False
+        config["policy"]["environment_probe_submit_enabled"] = False
+        self.assert_invalid(manifest, submit=True, config=config, registry=registry)
+
+    def test_environment_probe_submission_remains_disabled(self):
+        manifest = self.manifest_v2("environment_probe", gpus_per_node=1, run_dir=str(self.run_root / "probe_disabled"))
+        manifest["approved_by_human"] = True
+        manifest["allowed_submit"] = True
+        config = clone(self.config)
+        config["policy"]["environment_probe_submit_enabled"] = False
+        self.assert_invalid(manifest, submit=True, config=config)
+
     def verified_registry_for_manifest(self, manifest):
         root = self.temp_root / "identity"
         root.mkdir(exist_ok=True)
@@ -485,7 +513,7 @@ class QERunCtlTests(unittest.TestCase):
             "mpirun --version", "mpicc --showme:link", "ldd \"$MPIRUN_REALPATH\"",
             "MPI_Allreduce", "mpirun --bind-to none -np 16", "rank_count", "node_count",
             "CONFIGURED_BINARY_PATH", "ACCEPTED_G1_SMOKE_PATH", "sha256sum \"$target\"",
-            "binary_identity_discrepancy_status=needs_nano4_verification",
+            "binary_identity_status=accepted_g1_production_binary_no_performance_claim",
         ]
         for token in required:
             with self.subTest(token=token):
