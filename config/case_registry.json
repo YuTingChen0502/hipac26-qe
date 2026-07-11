@@ -28,25 +28,59 @@
       "display_name": "TypeA Au(111) many-k emax5",
       "case_family": "typeA-au111-manyk",
       "role": "two_node_readiness_diagnostic",
-      "lifecycle": "needs_nano4_verification",
+      "lifecycle": "verified",
       "selected": true,
       "separate_workload": false,
-      "qe_submit_eligible": false,
+      "qe_submit_eligible": true,
       "approved_runtime_roles": [
         "two_node_readiness_diagnostic"
       ],
       "input": {
-        "path": null,
-        "sha256": null,
-        "identity_status": "needs_nano4_verification"
+        "path": "/work/$USER/hipac26-qe-cases/typeA-au111-manyk-emax5/pw.in",
+        "sha256": "a58cb048b849a653f067bec22bee124350d5122e392cc1ace87c7e5abba860a7",
+        "identity_status": "verified"
       },
       "pseudos": {
-        "files": [],
-        "sha256": {},
-        "identity_status": "needs_nano4_verification"
+        "files": [
+          "/work/$USER/hipac26-qe-pseudos/Au.pbe-nd-van.UPF"
+        ],
+        "sha256": {
+          "/work/$USER/hipac26-qe-pseudos/Au.pbe-nd-van.UPF": "f3ddf87a320e0fa57066628284f30f300dc6a4eadbc1a81c8b9b88eaa4780ab9"
+        },
+        "identity_status": "verified"
       },
       "blocked_reason": null,
-      "notes": "Canonical exact input path/hash and Au pseudo identities/hashes are not yet frozen. Render/validation preflight only."
+      "notes": "Immutable derived readiness diagnostic only; source TypeA maxstep100 input remains unchanged. Not a benchmark, not TypeA-nosym, not official-scale, and no performance or optimization claim is allowed.",
+      "allowed_npools": [
+        1
+      ],
+      "benchmark_valid": false,
+      "performance_claim_allowed": false,
+      "optimization_claim_allowed": false,
+      "runtime_binaries": {
+        "g1_production": {
+          "path": "/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x",
+          "sha256": "d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543",
+          "identity_status": "verified_read_only_g1_production"
+        },
+        "g1p_profiling_only": {
+          "path": "/work/$USER/hipac26-qe-builds/G1p-qe75-nvhpc259-gpu-nvtx/install/bin/pw.x",
+          "sha256": "e93f7a9b9a7e8ab963ef20a530a5731d7569bd7d53a7ed9bcf42115e53a91b44",
+          "identity_status": "verified_read_only_g1p_profiling_only"
+        }
+      },
+      "source_lineage": {
+        "source_case_id": "typeA-au111-manyk-full",
+        "source_path": "/work/$USER/hipac26-qe-cases/typeA-au111-manyk/pw.in",
+        "source_sha256": "7c9354016502431300025747b73aebe9ae2b3a6766c811fe0bf0e8a8066b03d2",
+        "only_physics_change": "electron_maxstep 100 -> 5"
+      },
+      "transformation_evidence": {
+        "record_path": "/work/$USER/hipac26-qe-local/control_center/chatC_p2_readiness_recovery_review/transformation_record.json",
+        "record_sha256": "b1c7dd444de73214ba32cace5090f587c02b3b979d784336b36d9e7b7cfd84b4",
+        "diff_path": "/work/$USER/hipac26-qe-local/control_center/chatC_p2_readiness_recovery_review/derived_input.diff",
+        "diff_sha256": "c281eb8f55c9b1137cab6f63e763e0556f0a95a383598239767d9588420ba109"
+      }
     },
     {
       "case_id": "typeA-au111-manyk-emax20",

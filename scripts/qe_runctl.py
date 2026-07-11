@@ -405,6 +405,51 @@ def build_case_index(
             if not roles:
                 fail(f"verified case has no approved runtime role: {case_id}")
 
+        if "allowed_npools" in case:
+            allowed_npools = case["allowed_npools"]
+            if (
+                not isinstance(allowed_npools, list)
+                or not allowed_npools
+                or any(
+                    isinstance(value, bool) or not isinstance(value, int) or value < 1
+                    for value in allowed_npools
+                )
+                or len(set(allowed_npools)) != len(allowed_npools)
+            ):
+                fail(f"invalid allowed_npools for case: {case_id}")
+
+        if "benchmark_valid" in case and case["benchmark_valid"] is not False:
+            fail(f"case benchmark_valid must be false: {case_id}")
+        if (
+            "performance_claim_allowed" in case
+            and case["performance_claim_allowed"] is not False
+        ):
+            fail(f"case performance_claim_allowed must be false: {case_id}")
+        if (
+            "optimization_claim_allowed" in case
+            and case["optimization_claim_allowed"] is not False
+        ):
+            fail(f"case optimization_claim_allowed must be false: {case_id}")
+
+        if "runtime_binaries" in case:
+            binaries = case["runtime_binaries"]
+            if not isinstance(binaries, dict) or not binaries:
+                fail(f"invalid runtime_binaries for case: {case_id}")
+            for binary_label, binary_identity in binaries.items():
+                require_string(binary_label, f"case {case_id}.runtime_binaries key")
+                identity = require_object(
+                    binary_identity,
+                    f"case {case_id}.runtime_binaries.{binary_label}",
+                )
+                require_absolute_path(
+                    identity.get("path"),
+                    f"case {case_id}.runtime_binaries.{binary_label}.path",
+                )
+                require_sha256(
+                    identity.get("sha256"),
+                    f"case {case_id}.runtime_binaries.{binary_label}.sha256",
+                )
+
         if lifecycle == "blocked":
             reason = case.get("blocked_reason")
             if not isinstance(reason, str) or not reason:
@@ -674,7 +719,7 @@ def validate_manifest_v2(
     if manifest["schema_version"] != MANIFEST_V2:
         fail("unsupported manifest v2 schema_version")
     if not re.fullmatch(
-        r"[A-Z0-9]+-[TR][0-9]{3}",
+        r"[A-Z0-9]+-(?:[TR][0-9]{3}|NP[0-9]+|PROFILE-NP[0-9]+)",
         require_string(manifest["trial_id"], "trial_id"),
     ):
         fail("invalid trial_id")
@@ -790,15 +835,17 @@ def validate_job_v2(
             "pseudo_paths",
             "pseudo_sha256",
         }
+        allowed = required | {"profiler"}
     elif kind == "environment_probe":
         required = common_required | {"probe_profile"}
+        allowed = required
     else:
         fail(f"unsupported job_kind: {kind}")
 
     require_exact_keys(
         job,
         required=required,
-        allowed=required,
+        allowed=allowed,
         label=f"{kind} job",
     )
 
@@ -872,6 +919,9 @@ def validate_job_v2(
         case_index=case_index,
     )
 
+    if "profiler" in job:
+        validate_profiler(job["profiler"])
+
     if strict_files:
         check_hash(
             expand_path(job["binary_path"]),
@@ -892,6 +942,26 @@ def validate_job_v2(
             )
 
     return kind
+
+
+def validate_profiler(profiler: Any) -> None:
+    value = require_object(profiler, "profiler")
+    required = {"enabled", "tool", "output_prefix", "required_download", "optional_download", "remote_only"}
+    require_exact_keys(
+        value,
+        required=required,
+        allowed=required,
+        label="profiler",
+    )
+    if value["enabled"] is not True:
+        fail("profiler.enabled must be true when profiler is present")
+    if value["tool"] != "nsys":
+        fail("unsupported profiler tool")
+    prefix = require_string(value["output_prefix"], "profiler.output_prefix")
+    if not re.fullmatch(r"[A-Za-z0-9_.-]+", prefix):
+        fail("profiler.output_prefix contains unsupported characters")
+    for key in ("required_download", "optional_download", "remote_only"):
+        require_bool(value[key], f"profiler.{key}")
 
 
 def validate_resource_shape(
@@ -1227,6 +1297,23 @@ def validate_case_preflight(
         if manifest_hashes != expected_hashes:
             fail(f"pseudo sha256 mismatch for case: {case_id}")
 
+    allowed_npools = case.get("allowed_npools")
+    if allowed_npools is not None:
+        npools = require_int(job["runtime"].get("npools"), "runtime.npools")
+        if npools not in allowed_npools:
+            fail(f"npools is not allowed for case {case_id}: {npools}")
+
+    binaries = case.get("runtime_binaries")
+    if binaries:
+        matching = [
+            identity
+            for identity in binaries.values()
+            if normalized_path_text(identity["path"]) == normalized_path_text(job["binary_path"])
+            and identity["sha256"].lower() == job["binary_sha256"].lower()
+        ]
+        if not matching:
+            fail(f"binary identity mismatch for case: {case_id}")
+
 
 def validate_case_submit_eligibility(
     job: dict[str, Any],
@@ -1307,16 +1394,17 @@ def validate_v2_submission_guards(
                 )
             continue
 
+        if policy.get("two_node_qe_submit_enabled") is not True:
+            fail(
+                "QE submit denied: "
+                "two_node_qe_submit_enabled=false"
+            )
+
         if int(job["slurm"]["nodes"]) > 1:
             if policy.get("two_node_environment_verified") is not True:
                 fail(
                     "2-node QE submit denied: "
                     "two_node_environment_verified=false"
-                )
-            if policy.get("two_node_qe_submit_enabled") is not True:
-                fail(
-                    "2-node QE submit denied: "
-                    "two_node_qe_submit_enabled=false"
                 )
 
 
@@ -1382,6 +1470,39 @@ def render_qe_job_script(job: dict[str, Any]) -> str:
     binary_path = shlex.quote(job["binary_path"])
     input_path = shlex.quote(job["input_path"])
 
+    if "ntasks_per_node" not in slurm:
+        command_parts = [
+            launcher,
+            "-np",
+            str(mpi_ranks),
+            '"$QE_BIN"',
+            "-nk",
+            str(runtime["npools"]),
+        ]
+        if extra_args:
+            command_parts.append(extra_args)
+        command_parts.extend(["-in", '"$QE_INPUT"', ">", "qe.out"])
+        return f"""#!/usr/bin/env bash
+{directives}
+set -euo pipefail
+
+export OMP_NUM_THREADS={runtime['omp_num_threads']}
+export QE_BIN={binary_path}
+export QE_INPUT={input_path}
+
+{' '.join(command_parts)}
+"""
+
+    run_dir = shlex.quote(job["run_dir"])
+    pseudo_exports = "\n".join(
+        f"PSEUDO_{idx}={shlex.quote(path)}; PSEUDO_SHA_{idx}={shlex.quote(job['pseudo_sha256'][path])}; export PSEUDO_{idx} PSEUDO_SHA_{idx}"
+        for idx, path in enumerate(job["pseudo_paths"], 1)
+    )
+    pseudo_checks = "\n".join(
+        f"check_hash \"$PSEUDO_{idx}\" \"$PSEUDO_SHA_{idx}\" pseudo_{idx}"
+        for idx, _path in enumerate(job["pseudo_paths"], 1)
+    )
+
     command_parts = [
         launcher,
         "-np",
@@ -1404,6 +1525,30 @@ def render_qe_job_script(job: dict[str, Any]) -> str:
     )
 
     qe_command = " ".join(command_parts)
+    profiler = job.get("profiler")
+    if profiler:
+        prefix = shlex.quote(profiler["output_prefix"])
+        qe_command = (
+            f"nsys profile --force-overwrite=true --trace=mpi,cuda,nvtx "
+            f"--sample=none --output=\"$RUN_DIR\"/{prefix} {qe_command}"
+        )
+        profiler_stats = f"""
+if command -v nsys >/dev/null 2>&1; then
+    nsys stats --report cuda_api,cuda_gpu_trace,mpi_sum \"$RUN_DIR\"/{prefix}.nsys-rep > \"$RUN_DIR\"/nsys_stats.txt 2>&1 || true
+fi
+"""
+    else:
+        profiler_stats = ""
+
+    mapping_body = shlex.quote(r"""set -euo pipefail
+printf 'task_hostname=%s\n' "$(hostname)"
+printf 'SLURM_PROCID=%s\n' "${SLURM_PROCID:-}"
+printf 'SLURM_LOCALID=%s\n' "${SLURM_LOCALID:-}"
+printf 'CUDA_VISIBLE_DEVICES=%s\n' "${CUDA_VISIBLE_DEVICES:-}"
+case "${CUDA_VISIBLE_DEVICES:-}" in
+    ""|*,*) echo 'ERROR: expected one visible GPU per rank' >&2; exit 31 ;;
+esac
+""")
 
     return f"""#!/usr/bin/env bash
 {directives}
@@ -1412,8 +1557,65 @@ set -euo pipefail
 export OMP_NUM_THREADS={runtime['omp_num_threads']}
 export QE_BIN={binary_path}
 export QE_INPUT={input_path}
+export QE_BIN_SHA256={shlex.quote(job['binary_sha256'])}
+export QE_INPUT_SHA256={shlex.quote(job['input_sha256'])}
+export RUN_DIR={run_dir}
+{pseudo_exports}
+
+mkdir -p "$RUN_DIR"
+
+check_hash() {{
+    path="$1"
+    expected="$2"
+    label="$3"
+    test -r "$path"
+    actual=$(sha256sum "$path" | awk '{{print $1}}')
+    if [ "$actual" != "$expected" ]; then
+        echo "ERROR: $label sha256 mismatch: $actual != $expected" >&2
+        exit 20
+    fi
+    printf '%s_path=%s\n' "$label" "$path"
+    printf '%s_sha256=%s\n' "$label" "$actual"
+}}
+
+PROFILE_PATH={shlex.quote(str(REPO_ROOT / 'profiles' / 'nano4_h200_nvhpc259.sh'))}
+if [ ! -r "$PROFILE_PATH" ]; then
+    echo "ERROR: approved Nano4 profile is not readable: $PROFILE_PATH" >&2
+    exit 21
+fi
+set +u
+# shellcheck source=/dev/null
+. "$PROFILE_PATH"
+set -u
+
+check_hash "$QE_BIN" "$QE_BIN_SHA256" qe_binary
+check_hash "$QE_INPUT" "$QE_INPUT_SHA256" qe_input
+{pseudo_checks}
+
+MPIRUN_PATH=$(command -v mpirun || true)
+if [ -z "$MPIRUN_PATH" ]; then
+    echo 'ERROR: mpirun not resolved after profile load' >&2
+    exit 22
+fi
+MPIRUN_REALPATH=$(realpath "$MPIRUN_PATH")
+printf 'resolved_mpirun=%s\n' "$MPIRUN_PATH"
+printf 'realpath_mpirun=%s\n' "$MPIRUN_REALPATH"
+MPI_ROUTE_IDENTITY="$MPIRUN_REALPATH ${{OPAL_PREFIX:-}} ${{NVCOMPILER:-}} ${{NVHPC_ROOT:-}} ${{LOADEDMODULES:-}} ${{HIPAC_BUILD_ROUTE:-}}"
+case "$MPI_ROUTE_IDENTITY" in
+    *hpcx*|*HPCX*|*HPC-X*|*nvhpc*|*NVHPC*|*x86-nvhpc*) ;;
+    *) echo 'ERROR: resolved MPI route is not identifiable as approved NVHPC/HPC-X after profile load' >&2; exit 23 ;;
+esac
+
+srun \
+    --nodes={slurm['nodes']} \
+    --ntasks={slurm['ntasks']} \
+    --ntasks-per-node={slurm['ntasks_per_node']} \
+    --gpus-per-task=1 \
+    --gpu-bind=single:1 \
+    bash -lc {mapping_body} | tee "$RUN_DIR/mapping_guard.out"
 
 {qe_command}
+{profiler_stats}
 """
 
 
@@ -1450,6 +1652,8 @@ def build_job_metadata(
                 "pseudo_sha256": job["pseudo_sha256"],
             }
         )
+        if "profiler" in job:
+            metadata["profiler"] = job["profiler"]
     elif kind == "environment_probe":
         metadata.update(
             {

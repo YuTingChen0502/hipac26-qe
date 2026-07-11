@@ -237,6 +237,57 @@
           },
           "notes": {
             "type": "string"
+          },
+          "allowed_npools": {
+            "type": "array",
+            "minItems": 1,
+            "uniqueItems": true,
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          },
+          "benchmark_valid": {
+            "const": false
+          },
+          "performance_claim_allowed": {
+            "const": false
+          },
+          "optimization_claim_allowed": {
+            "const": false
+          },
+          "runtime_binaries": {
+            "type": "object",
+            "minProperties": 1,
+            "additionalProperties": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "path",
+                "sha256",
+                "identity_status"
+              ],
+              "properties": {
+                "path": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "sha256": {
+                  "type": "string",
+                  "pattern": "^[a-fA-F0-9]{64}$"
+                },
+                "identity_status": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          },
+          "source_lineage": {
+            "type": "object"
+          },
+          "transformation_evidence": {
+            "type": "object"
           }
         },
         "allOf": [

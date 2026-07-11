@@ -33,7 +33,7 @@
         },
         "trial_id": {
           "type": "string",
-          "pattern": "^[A-Z0-9]+-T[0-9]{3}$"
+          "pattern": "^[A-Z0-9]+-(?:[TR][0-9]{3}|NP[0-9]+|PROFILE-NP[0-9]+)$"
         },
         "autonomy_level": {
           "type": "string",
@@ -217,7 +217,7 @@
         },
         "trial_id": {
           "type": "string",
-          "pattern": "^[A-Z0-9]+-T[0-9]{3}$"
+          "pattern": "^[A-Z0-9]+-(?:[TR][0-9]{3}|NP[0-9]+|PROFILE-NP[0-9]+)$"
         },
         "autonomy_level": {
           "type": "string",
@@ -415,6 +415,39 @@
                         "type": "integer",
                         "minimum": 1,
                         "maximum": 16
+                      }
+                    }
+                  },
+                  "profiler": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "required": [
+                      "enabled",
+                      "tool",
+                      "output_prefix",
+                      "required_download",
+                      "optional_download",
+                      "remote_only"
+                    ],
+                    "properties": {
+                      "enabled": {
+                        "const": true
+                      },
+                      "tool": {
+                        "const": "nsys"
+                      },
+                      "output_prefix": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z0-9_.-]+$"
+                      },
+                      "required_download": {
+                        "type": "boolean"
+                      },
+                      "optional_download": {
+                        "type": "boolean"
+                      },
+                      "remote_only": {
+                        "type": "boolean"
                       }
                     }
                   }

@@ -14,6 +14,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import qe_runctl  # noqa: E402
+import qe_case_derivation  # noqa: E402
 
 
 HEX_A = "a" * 64
@@ -50,7 +51,7 @@ class QERunCtlTests(unittest.TestCase):
         total = nodes * gpus_per_node
         slurm = {
             "account": "ACD114087",
-            "partition": "dev" if total < 8 else "16gpus",
+            "partition": "dev",
             "nodes": nodes,
             "ntasks": total,
             "ntasks_per_node": gpus_per_node,
@@ -70,16 +71,24 @@ class QERunCtlTests(unittest.TestCase):
         if job_kind == "environment_probe":
             job["probe_profile"] = "basic_environment"
         else:
+            case = self.registry["cases"][0]
+            input_path = (case.get("input") or {}).get("path") or "/tmp/hipac26-qe-test/input/typeA.in"
+            input_sha = (case.get("input") or {}).get("sha256") or HEX_B
+            pseudo_files = (case.get("pseudos") or {}).get("files") or ["/tmp/hipac26-qe-test/pseudo/Au.UPF"]
+            pseudo_hashes = (case.get("pseudos") or {}).get("sha256") or {pseudo_files[0]: HEX_C}
+            binary_identity = ((case.get("runtime_binaries") or {}).get("g1_production") or {})
+            binary_path = binary_identity.get("path") or "/tmp/hipac26-qe-test/bin/pw.x"
+            binary_sha = binary_identity.get("sha256") or HEX_A
             job.update(
                 {
                     "case_id": "typeA-au111-manyk-emax5",
                     "runtime_role": "two_node_readiness_diagnostic",
-                    "binary_path": "/tmp/hipac26-qe-test/bin/pw.x",
-                    "binary_sha256": HEX_A,
-                    "input_path": "/tmp/hipac26-qe-test/input/typeA.in",
-                    "input_sha256": HEX_B,
-                    "pseudo_paths": ["/tmp/hipac26-qe-test/pseudo/Au.UPF"],
-                    "pseudo_sha256": {"/tmp/hipac26-qe-test/pseudo/Au.UPF": HEX_C},
+                    "binary_path": binary_path,
+                    "binary_sha256": binary_sha,
+                    "input_path": input_path,
+                    "input_sha256": input_sha,
+                    "pseudo_paths": pseudo_files,
+                    "pseudo_sha256": pseudo_hashes,
                 }
             )
             job["runtime"].update({"npools": npools, "mpirun_np": total})
@@ -144,6 +153,8 @@ class QERunCtlTests(unittest.TestCase):
         registry["cases"][0].update(lifecycle="verified", qe_submit_eligible=True)
         registry["cases"][0]["input"] = {"path": str(input_path), "sha256": input_hash, "identity_status": "verified"}
         registry["cases"][0]["pseudos"] = {"files": [str(pseudo_path)], "sha256": {str(pseudo_path): pseudo_hash}, "identity_status": "verified"}
+        registry["cases"][0]["runtime_binaries"] = {"g1_production": {"path": str(binary_path), "sha256": binary_hash, "identity_status": "verified_test"}}
+        registry["cases"][0]["allowed_npools"] = [1]
         job = manifest["jobs"][0]
         job.update(binary_path=str(binary_path), binary_sha256=binary_hash, input_path=str(input_path), input_sha256=input_hash, pseudo_paths=[str(pseudo_path)], pseudo_sha256={str(pseudo_path): pseudo_hash})
         return registry
@@ -155,7 +166,7 @@ class QERunCtlTests(unittest.TestCase):
         manifest["allowed_submit"] = True
         registry = self.verified_registry_for_manifest(manifest)
         manifest_path = self.write_json(tmp, "qe_submit_ready.json", manifest)
-        with self.controller_config_patch():
+        with self.controller_config_patch(), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry):
             qe_runctl.cmd_render(argparse.Namespace(manifest=str(manifest_path), strict_files=False, no_overwrite=True))
         return manifest, manifest_path, registry
 
@@ -237,7 +248,7 @@ class QERunCtlTests(unittest.TestCase):
             qe_runctl.validate_rendered_files(manifest)
 
     def test_v2_positive_np_shapes_validate_and_render(self):
-        for gpn, npools in [(1, 1), (2, 2), (4, 4), (8, 8)]:
+        for gpn, npools in [(1, 1), (2, 1), (4, 1), (8, 1)]:
             with self.subTest(gpus_per_node=gpn), tempfile.TemporaryDirectory() as tmp:
                 run_dir = self.run_root / f"qe_np{2*gpn}"
                 manifest = self.manifest_v2("qe", gpus_per_node=gpn, npools=npools, run_dir=str(run_dir))
@@ -253,9 +264,10 @@ class QERunCtlTests(unittest.TestCase):
                     qe_runctl.validate_rendered_files(manifest, config=self.config)
 
     def test_future_2node_16gpu_shape_validates_and_renders(self):
-        manifest = self.manifest_v2("qe", gpus_per_node=8, npools=16)
+        manifest = self.manifest_v2("qe", gpus_per_node=8, npools=1)
         self.assert_valid(manifest)
         script = qe_runctl.render_job_script(manifest["jobs"][0])
+        self.assertIn("#SBATCH -p dev", script)
         self.assertIn("#SBATCH -N 2", script)
         self.assertIn("#SBATCH --ntasks=16", script)
         self.assertIn("#SBATCH --gres=gpu:8", script)
@@ -288,7 +300,7 @@ class QERunCtlTests(unittest.TestCase):
 
     def test_2node_qe_validate_render_dry_run_but_submit_hard_blocked(self):
         with tempfile.TemporaryDirectory() as tmp:
-            manifest = self.manifest_v2("qe", gpus_per_node=8, npools=8, run_dir=str(self.run_root / "qe16"))
+            manifest = self.manifest_v2("qe", gpus_per_node=8, npools=1, run_dir=str(self.run_root / "qe16"))
             self.assert_valid(manifest)
             path = self.write_json(tmp, "qe.json", manifest)
             with self.controller_config_patch():
@@ -306,18 +318,18 @@ class QERunCtlTests(unittest.TestCase):
     def test_negative_resource_and_policy_matrix(self):
         cases = []
         def add(name, mutator):
-            m = self.manifest_v2("qe", gpus_per_node=8, npools=8)
+            m = self.manifest_v2("qe", gpus_per_node=8, npools=1)
             mutator(m)
             cases.append((name, m))
         add("unauthorized account", lambda m: m["jobs"][0]["slurm"].update(account="BAD000000"))
         add("forbidden account", lambda m: m["jobs"][0]["slurm"].update(account="ACD115059"))
         add("account partition mismatch", lambda m: m["jobs"][0]["slurm"].update(account="GOV114009"))
         mismatch_config = clone(self.config)
-        mismatch_config["partitions"]["16gpus"]["authorized_accounts"] = ["ACD114087"]
+        mismatch_config["partitions"]["dev"]["authorized_accounts"] = ["ACD114087"]
         add("partition GPU minimum", lambda m: m["jobs"][0]["slurm"].update(partition="16gpus", ntasks=2, ntasks_per_node=1, gpus_per_node=1, total_gpus=2, gres="gpu:1"))
         add("partition GPU ceiling", lambda m: m["jobs"][0]["slurm"].update(partition="64gpus"))
         low_ceiling_config = clone(self.config)
-        low_ceiling_config["partitions"]["16gpus"]["maximum_total_gpus_by_account"]["ACD114087"] = 8
+        low_ceiling_config["partitions"]["dev"]["maximum_total_gpus_by_account"]["ACD114087"] = 8
         add("walltime", lambda m: m["jobs"][0]["slurm"].update(time="3-00:00:00"))
         add("nodes tasks mismatch", lambda m: m["jobs"][0]["slurm"].update(ntasks=15))
         add("gpu total mismatch", lambda m: m["jobs"][0]["slurm"].update(total_gpus=15))
@@ -331,6 +343,7 @@ class QERunCtlTests(unittest.TestCase):
         add("invalid npools", lambda m: m["jobs"][0]["runtime"].update(npools=0))
         add("npools greater", lambda m: m["jobs"][0]["runtime"].update(npools=17))
         add("npools indivisible", lambda m: m["jobs"][0]["runtime"].update(npools=3))
+        add("case disallowed npools", lambda m: m["jobs"][0]["runtime"].update(npools=2, mpirun_np=16))
         add("duplicate config", lambda m: m["jobs"].append(clone(m["jobs"][0])))
         add("duplicate run_dir", lambda m: (m["jobs"].append(clone(m["jobs"][0])), m["jobs"][1].update(config_id="cfg002_test", run_dir="/tmp//hipac26-qe-test-run/cfg001_test")))
         add("relative paths", lambda m: m["jobs"][0].update(run_dir="relative/run"))
@@ -371,7 +384,7 @@ class QERunCtlTests(unittest.TestCase):
                 else:
                     self.assert_invalid(manifest)
 
-        ceiling_manifest = self.manifest_v2("qe", gpus_per_node=8, npools=8)
+        ceiling_manifest = self.manifest_v2("qe", gpus_per_node=8, npools=1)
         self.assert_invalid(ceiling_manifest, config=low_ceiling_config)
 
     def test_negative_submit_claim_case_and_probe_routes(self):
@@ -584,21 +597,25 @@ class QERunCtlTests(unittest.TestCase):
             registry["cases"][0].update(lifecycle="verified", qe_submit_eligible=True)
             registry["cases"][0]["input"] = {"path": str(input_path), "sha256": input_hash, "identity_status": "verified"}
             registry["cases"][0]["pseudos"] = {"files": [str(pseudo_path)], "sha256": {str(pseudo_path): pseudo_hash}, "identity_status": "verified"}
+            registry["cases"][0]["runtime_binaries"] = {"g1_production": {"path": str(binary_path), "sha256": binary_hash, "identity_status": "verified_test"}}
+            registry["cases"][0]["allowed_npools"] = [1]
             manifest = self.manifest_v2("qe", nodes=1, gpus_per_node=1, npools=1, run_dir=str(self.run_root / "run"))
             manifest["approved_by_human"] = True
             manifest["allowed_submit"] = True
             job = manifest["jobs"][0]
             job.update(binary_path=str(binary_path), binary_sha256=binary_hash, input_path=str(input_path), input_sha256=input_hash, pseudo_paths=[str(pseudo_path)], pseudo_sha256={str(pseudo_path): pseudo_hash})
-            self.assert_valid(manifest)
+            qe_runctl.validate_manifest(manifest, submit_mode=False, strict_files=False, config=self.config, case_registry=registry)
             manifest_path = self.write_json(tmp, "manifest.json", manifest)
             try:
-                with self.controller_config_patch():
+                with self.controller_config_patch(), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry):
                     qe_runctl.cmd_render(argparse.Namespace(manifest=str(manifest_path), strict_files=False, no_overwrite=True))
                 calls = []
                 def fake_run(args, **kwargs):
                     calls.append((args, kwargs))
                     return subprocess_result(0, "Submitted batch job 12345\n", "")
-                with mock.patch.dict(os.environ, {"HIPAC_SUBMIT_CMD": str(root / "fake_sbatch")}), self.controller_config_patch(), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=fake_run):
+                enabled_config = clone(self.config)
+                enabled_config["policy"]["two_node_qe_submit_enabled"] = True
+                with mock.patch.dict(os.environ, {"HIPAC_SUBMIT_CMD": str(root / "fake_sbatch")}), mock.patch.object(qe_runctl, "load_config", return_value=enabled_config), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=fake_run):
                     self.assertEqual(qe_runctl.cmd_submit(argparse.Namespace(manifest=str(manifest_path), strict_files=False)), 0)
                 self.assertEqual(len(calls), 1)
                 self.assertEqual(calls[0][0][0], "sbatch")
@@ -606,6 +623,72 @@ class QERunCtlTests(unittest.TestCase):
                 self.assertTrue((self.run_root / "run" / "submission_record.json").exists())
             finally:
                 pass
+
+    def test_emax5_derivation_preserves_semantics_except_maxstep(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / "source.in"
+            dest = root / "derived" / "pw.in"
+            source.write_text(
+                "&CONTROL\n"
+                "  calculation = 'scf'\n"
+                "  prefix = 'au111'\n"
+                "  outdir = './out'\n"
+                "  pseudo_dir = '/pseudos'\n"
+                "  disk_io = 'none'\n"
+                "/\n"
+                "&SYSTEM\n  nat = 1, ntyp = 1\n/\n"
+                "&ELECTRONS\n  electron_maxstep = 100\n/\n"
+                "ATOMIC_SPECIES\nAu 196.96657 Au.UPF\n"
+                "ATOMIC_POSITIONS angstrom\nAu 0 0 0\n"
+                "K_POINTS automatic\n4 4 1 0 0 0\n",
+                encoding="utf-8",
+            )
+            record = qe_case_derivation.derive_electron_maxstep(
+                source=source,
+                dest=dest,
+                expected_value=100,
+                new_value=5,
+            )
+            self.assertTrue(dest.exists())
+            self.assertTrue(record["bytes_changed_only_for_field"])
+            self.assertIn("-  electron_maxstep = 100", record["unified_diff"])
+            self.assertIn("+  electron_maxstep = 5", record["unified_diff"])
+            self.assertTrue(record["semantic_comparison"]["equivalent_except_electron_maxstep"])
+            self.assertEqual(record["semantic_comparison"]["derived_electron_maxstep"], "5")
+
+    def test_emax5_derivation_negative_guards(self):
+        cases = {
+            "missing": "&ELECTRONS\n/\n",
+            "multiple": "&ELECTRONS\n  electron_maxstep = 100\n  electron_maxstep = 100\n/\n",
+            "wrong": "&ELECTRONS\n  electron_maxstep = 20\n/\n",
+        }
+        for name, text in cases.items():
+            with self.subTest(name=name), tempfile.TemporaryDirectory() as tmp:
+                source = Path(tmp) / "source.in"
+                dest = Path(tmp) / "dest.in"
+                source.write_text(text, encoding="utf-8")
+                with self.assertRaises(qe_case_derivation.DerivationError):
+                    qe_case_derivation.derive_electron_maxstep(
+                        source=source,
+                        dest=dest,
+                        expected_value=100,
+                        new_value=5,
+                    )
+
+    def test_existing_different_derived_destination_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            source = Path(tmp) / "source.in"
+            dest = Path(tmp) / "dest.in"
+            source.write_text("&ELECTRONS\n  electron_maxstep = 100\n/\n", encoding="utf-8")
+            dest.write_text("different\n", encoding="utf-8")
+            with self.assertRaises(qe_case_derivation.DerivationError):
+                qe_case_derivation.derive_electron_maxstep(
+                    source=source,
+                    dest=dest,
+                    expected_value=100,
+                    new_value=5,
+                )
 
 
 def subprocess_result(returncode, stdout, stderr):
