@@ -15,6 +15,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 import qe_runctl  # noqa: E402
 import qe_case_derivation  # noqa: E402
+import qe_mapping_validator  # noqa: E402
 
 
 HEX_A = "a" * 64
@@ -170,6 +171,22 @@ class QERunCtlTests(unittest.TestCase):
             qe_runctl.cmd_render(argparse.Namespace(manifest=str(manifest_path), strict_files=False, no_overwrite=True))
         return manifest, manifest_path, registry
 
+    def write_submit_permit(self, manifest_path, manifest, *, ledger_path=None, resources=None, trial_id=None):
+        job = manifest["jobs"][0]
+        permit = {
+            "schema_version": qe_runctl.PERMIT_SCHEMA,
+            "phase_identifier": "chatC_p2_readiness_recovery2",
+            "trial_id": trial_id or manifest["trial_id"],
+            "manifest_sha256": qe_runctl.sha256_file(Path(manifest_path)),
+            "build_sha256": job.get("binary_sha256"),
+            "input_sha256": job.get("input_sha256"),
+            "pseudo_sha256": dict(sorted(job.get("pseudo_sha256", {}).items())),
+            "resources": resources or job["slurm"],
+            "maximum_attempts": 1,
+            "ledger_path": str(ledger_path or (self.temp_root / "control" / "submission_ledger.json")),
+        }
+        return self.write_json(Path(manifest_path).parent, "permit_record.json", permit)
+
     def assert_tampered_submit_rejected_before_subprocess(self, manifest_path, registry=None, config=None):
         with mock.patch.object(qe_runctl.subprocess, "run", side_effect=AssertionError("subprocess forbidden")) as run_mock:
             with self.controller_config_patch(), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry or self.registry):
@@ -262,6 +279,21 @@ class QERunCtlTests(unittest.TestCase):
                 with self.controller_config_patch():
                     self.assertEqual(qe_runctl.cmd_render(argparse.Namespace(manifest=str(path), strict_files=False, no_overwrite=True)), 0)
                     qe_runctl.validate_rendered_files(manifest, config=self.config)
+
+    def test_launcher_matched_qe_route_contains_rank_wrapper_not_srun_probe(self):
+        manifest = self.manifest_v2("qe", gpus_per_node=4, npools=1)
+        script = qe_runctl.render_job_script(manifest["jobs"][0])
+        self.assertIn("mpirun --bind-to none -np 8 --map-by ppr:4:node \"$RANK_WRAPPER_BIN\" > qe.out", script)
+        self.assertIn("qe_rank_wrapper.cu", script)
+        self.assertIn("qe_mapping_validator.py", script)
+        self.assertIn("launcher_matched_rank_wrapper=true", script)
+        self.assertIn("HIPAC_EXPECTED_RANKS_PER_NODE=4", script)
+        self.assertNotRegex(script, r"\bsrun\b.*mapping")
+
+    def test_manifest_cannot_inject_different_wrapper(self):
+        manifest = self.manifest_v2("qe", gpus_per_node=1, npools=1)
+        manifest["jobs"][0]["runtime"]["rank_wrapper"] = "/tmp/evil.sh"
+        self.assert_invalid(manifest)
 
     def test_future_2node_16gpu_shape_validates_and_renders(self):
         manifest = self.manifest_v2("qe", gpus_per_node=8, npools=1)
@@ -436,6 +468,72 @@ class QERunCtlTests(unittest.TestCase):
                 (run_dir / "job.sh").write_text((run_dir / "job.sh").read_text(encoding="utf-8") + "\necho tampered\n", encoding="utf-8")
                 self.assert_tampered_submit_rejected_before_subprocess(manifest_path, registry=registry)
 
+    def mapping_record(self, rank, host, local_rank, uuid=None, pci=None, count=1):
+        return {
+            "schema_version": qe_mapping_validator.SCHEMA_VERSION,
+            "hostname": host,
+            "global_mpi_rank": rank,
+            "local_rank": local_rank,
+            "mpi_world_size": 4,
+            "SLURM_PROCID": str(rank),
+            "SLURM_LOCALID": str(local_rank),
+            "CUDA_VISIBLE_DEVICES": str(local_rank),
+            "cuda_runtime_visible_device_count": count,
+            "selected_cuda_runtime_device_ordinal": 0,
+            "physical_gpu_pci_bus_id": pci or f"0000:{local_rank + 1:02x}:00.0",
+            "physical_gpu_uuid": uuid or f"GPU-{host}-{local_rank}",
+            "timestamp_utc": "2026-01-01T00:00:00Z",
+            "wrapper_version": "qe_rank_wrapper_v1",
+            "wrapper_source_sha256": HEX_A,
+            "validator_sha256": HEX_B,
+            "mpi_route_identity": "/opt/nvhpc/hpcx/bin/mpirun NVHPC",
+        }
+
+    def valid_mapping_records(self):
+        return [
+            self.mapping_record(0, "n1", 0),
+            self.mapping_record(1, "n1", 1),
+            self.mapping_record(2, "n2", 0),
+            self.mapping_record(3, "n2", 1),
+        ]
+
+    def assert_mapping_invalid(self, records, **kwargs):
+        params = dict(expected_ranks=4, expected_nodes=2, expected_ranks_per_node=2, expected_gpus_per_node=2)
+        params.update(kwargs)
+        with self.assertRaises(qe_mapping_validator.MappingValidationError):
+            qe_mapping_validator.validate_records(records, **params)
+
+    def test_global_mapping_aggregation_positive_and_negative_matrix(self):
+        records = self.valid_mapping_records()
+        summary = qe_mapping_validator.validate_records(
+            records,
+            expected_ranks=4,
+            expected_nodes=2,
+            expected_ranks_per_node=2,
+            expected_gpus_per_node=2,
+        )
+        self.assertEqual(summary["classification"], "PASS")
+
+        cases = []
+        r = clone(records); r[0]["cuda_runtime_visible_device_count"] = 2; cases.append(("cuda-count", r, {}))
+        r = clone(records); r[0]["physical_gpu_uuid"] = ""; cases.append(("missing-uuid", r, {}))
+        r = clone(records); r[0]["physical_gpu_pci_bus_id"] = ""; cases.append(("missing-pci", r, {}))
+        r = clone(records); r[1]["physical_gpu_uuid"] = r[0]["physical_gpu_uuid"]; cases.append(("duplicate-uuid", r, {}))
+        r = clone(records); r[1]["physical_gpu_pci_bus_id"] = r[0]["physical_gpu_pci_bus_id"]; cases.append(("duplicate-pci", r, {}))
+        r = clone(records); r[3]["hostname"] = "n3"; cases.append(("wrong-node-count", r, {}))
+        r = clone(records); r[1]["local_rank"] = 0; cases.append(("wrong-local-ranks", r, {}))
+        r = clone(records[:-1]); cases.append(("missing-rank-record", r, {}))
+        r = clone(records); r[0]["mpi_route_identity"] = "/usr/bin/mpirun"; cases.append(("bad-route", r, {}))
+
+        for name, bad_records, kw in cases:
+            with self.subTest(name=name):
+                self.assert_mapping_invalid(bad_records, **kw)
+
+    def test_mapping_wait_timeout_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(qe_mapping_validator.MappingValidationError):
+                qe_mapping_validator.wait_for_records(Path(tmp), expected_ranks=1, timeout_seconds=0)
+
         with tempfile.TemporaryDirectory() as tmp:
             manifest, manifest_path, registry = self.render_submit_ready_qe(tmp)
             run_dir = Path(manifest["jobs"][0]["run_dir"])
@@ -606,6 +704,7 @@ class QERunCtlTests(unittest.TestCase):
             job.update(binary_path=str(binary_path), binary_sha256=binary_hash, input_path=str(input_path), input_sha256=input_hash, pseudo_paths=[str(pseudo_path)], pseudo_sha256={str(pseudo_path): pseudo_hash})
             qe_runctl.validate_manifest(manifest, submit_mode=False, strict_files=False, config=self.config, case_registry=registry)
             manifest_path = self.write_json(tmp, "manifest.json", manifest)
+            self.write_submit_permit(manifest_path, manifest)
             try:
                 with self.controller_config_patch(), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry):
                     qe_runctl.cmd_render(argparse.Namespace(manifest=str(manifest_path), strict_files=False, no_overwrite=True))
@@ -615,14 +714,104 @@ class QERunCtlTests(unittest.TestCase):
                     return subprocess_result(0, "Submitted batch job 12345\n", "")
                 enabled_config = clone(self.config)
                 enabled_config["policy"]["two_node_qe_submit_enabled"] = True
-                with mock.patch.dict(os.environ, {"HIPAC_SUBMIT_CMD": str(root / "fake_sbatch")}), mock.patch.object(qe_runctl, "load_config", return_value=enabled_config), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=fake_run):
+                with mock.patch.object(qe_runctl, "approved_local_root", return_value=self.temp_root), mock.patch.dict(os.environ, {"HIPAC_SUBMIT_CMD": str(root / "fake_sbatch")}), mock.patch.object(qe_runctl, "load_config", return_value=enabled_config), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=fake_run):
                     self.assertEqual(qe_runctl.cmd_submit(argparse.Namespace(manifest=str(manifest_path), strict_files=False)), 0)
                 self.assertEqual(len(calls), 1)
                 self.assertEqual(calls[0][0][0], "sbatch")
                 self.assertTrue((self.run_root / "run" / "job_id.txt").exists())
                 self.assertTrue((self.run_root / "run" / "submission_record.json").exists())
+                ledger = qe_runctl.read_json(self.temp_root / "control" / "submission_ledger.json")
+                self.assertEqual(ledger["entries"][manifest["trial_id"]]["attempts_consumed"], 1)
             finally:
                 pass
+
+    def submit_ready_manifest_with_permit(self, tmp, *, trial_id="P2A-R2-NP2"):
+        manifest = self.manifest_v2("qe", nodes=1, gpus_per_node=1, npools=1, run_dir=str(self.run_root / f"permit_{trial_id}"))
+        manifest["trial_id"] = trial_id
+        manifest["approved_by_human"] = True
+        manifest["allowed_submit"] = True
+        registry = self.verified_registry_for_manifest(manifest)
+        path = self.write_json(tmp, f"{trial_id}.json", manifest)
+        self.write_submit_permit(path, manifest)
+        with self.controller_config_patch(), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry):
+            qe_runctl.cmd_render(argparse.Namespace(manifest=str(path), strict_files=False, no_overwrite=True))
+        enabled = clone(self.config)
+        enabled["policy"]["two_node_qe_submit_enabled"] = True
+        return manifest, path, registry, enabled
+
+    def test_one_time_permit_first_attempt_consumes_and_second_rejected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest, path, registry, enabled = self.submit_ready_manifest_with_permit(tmp)
+            def fake_run(args, **kwargs):
+                return subprocess_result(0, "Submitted batch job 111\n", "")
+            with mock.patch.object(qe_runctl, "approved_local_root", return_value=self.temp_root), mock.patch.object(qe_runctl, "load_config", return_value=enabled), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=fake_run):
+                self.assertEqual(qe_runctl.cmd_submit(argparse.Namespace(manifest=str(path), strict_files=False)), 0)
+            with mock.patch.object(qe_runctl, "approved_local_root", return_value=self.temp_root), mock.patch.object(qe_runctl, "load_config", return_value=enabled), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=AssertionError("second scheduler contact forbidden")):
+                with self.assertRaises(qe_runctl.RunCtlError):
+                    qe_runctl.cmd_submit(argparse.Namespace(manifest=str(path), strict_files=False))
+
+    def test_permit_rejects_changed_manifest_resources_and_trial_mismatch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest = self.manifest_v2("qe", nodes=1, gpus_per_node=1, npools=1, run_dir=str(self.run_root / "permit_changed"))
+            manifest["trial_id"] = "P2A-R2-NP2"
+            manifest["approved_by_human"] = True
+            manifest["allowed_submit"] = True
+            registry = self.verified_registry_for_manifest(manifest)
+            path = self.write_json(tmp, "manifest.json", manifest)
+            self.write_submit_permit(path, manifest)
+            manifest["jobs"][0]["slurm"]["time"] = "00:11:00"
+            path = self.write_json(tmp, "manifest.json", manifest)
+            with mock.patch.object(qe_runctl, "approved_local_root", return_value=self.temp_root), mock.patch.object(qe_runctl, "load_config", return_value=self.config), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=AssertionError("scheduler forbidden")):
+                with self.assertRaises(qe_runctl.RunCtlError):
+                    qe_runctl.cmd_submit(argparse.Namespace(manifest=str(path), strict_files=False))
+
+            path2 = self.write_json(tmp, "manifest2.json", manifest)
+            self.write_submit_permit(path2, manifest, trial_id="P2A-R2-NP4")
+            with self.assertRaises(qe_runctl.RunCtlError):
+                qe_runctl.load_and_validate_submit_permit(manifest_path=Path(path2), manifest=manifest)
+
+    def test_pre_scheduler_failure_consumes_attempt_and_scheduler_rejection_consumes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest, path, registry, enabled = self.submit_ready_manifest_with_permit(tmp, trial_id="P2A-R2-NP4")
+            with mock.patch.object(qe_runctl, "approved_local_root", return_value=self.temp_root), mock.patch.object(qe_runctl, "load_config", return_value=enabled), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl, "create_attempt_directory", side_effect=qe_runctl.RunCtlError("tmp failure before scheduler")), mock.patch.object(qe_runctl.subprocess, "run", side_effect=AssertionError("scheduler forbidden")):
+                with self.assertRaises(qe_runctl.RunCtlError):
+                    qe_runctl.cmd_submit(argparse.Namespace(manifest=str(path), strict_files=False))
+            ledger = qe_runctl.read_json(self.temp_root / "control" / "submission_ledger.json")
+            self.assertEqual(ledger["entries"][manifest["trial_id"]]["attempts_consumed"], 1)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest, path, registry, enabled = self.submit_ready_manifest_with_permit(tmp, trial_id="P2A-R2-NP8")
+            def reject(args, **kwargs):
+                return subprocess_result(1, "", "rejected")
+            with mock.patch.object(qe_runctl, "approved_local_root", return_value=self.temp_root), mock.patch.object(qe_runctl, "load_config", return_value=enabled), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=reject):
+                with self.assertRaises(qe_runctl.RunCtlError):
+                    qe_runctl.cmd_submit(argparse.Namespace(manifest=str(path), strict_files=False))
+            ledger = qe_runctl.read_json(self.temp_root / "control" / "submission_ledger.json")
+            attempt = ledger["entries"][manifest["trial_id"]]["attempts"][-1]
+            self.assertTrue(attempt["scheduler_contacted"])
+            self.assertEqual(attempt["final_state"], "scheduler_rejected")
+
+    def test_one_trial_cannot_consume_another_and_ledger_tampering_detected(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            manifest, path, registry, enabled = self.submit_ready_manifest_with_permit(tmp, trial_id="P2A-R2-NP16")
+            permit_path = Path(path).parent / "permit_record.json"
+            permit = qe_runctl.read_json(permit_path)
+            permit["trial_id"] = "P2A-R2-NP2"
+            self.write_json(Path(path).parent, "permit_record.json", permit)
+            with self.assertRaises(qe_runctl.RunCtlError):
+                qe_runctl.load_and_validate_submit_permit(manifest_path=Path(path), manifest=manifest)
+
+            self.write_submit_permit(path, manifest)
+            bad_ledger = self.temp_root / "control" / "submission_ledger.json"
+            self.write_json(bad_ledger.parent, bad_ledger.name, {"schema_version": "bad", "entries": {}})
+            with mock.patch.object(qe_runctl, "approved_local_root", return_value=self.temp_root), mock.patch.object(qe_runctl, "load_config", return_value=enabled), mock.patch.object(qe_runctl, "load_case_registry", return_value=registry), mock.patch.object(qe_runctl.subprocess, "run", side_effect=AssertionError("scheduler forbidden")):
+                with self.assertRaises(qe_runctl.RunCtlError):
+                    qe_runctl.cmd_submit(argparse.Namespace(manifest=str(path), strict_files=False))
+
+    def test_no_permit_authorizes_direct_sbatch(self):
+        source = (REPO_ROOT / "scripts" / "qe_runctl.py").read_text(encoding="utf-8")
+        self.assertIn("def cmd_submit", source)
+        self.assertEqual(qe_runctl.production_submit_command(), "sbatch")
 
     def test_emax5_derivation_preserves_semantics_except_maxstep(self):
         with tempfile.TemporaryDirectory() as tmp:

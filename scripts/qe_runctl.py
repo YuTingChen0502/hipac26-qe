@@ -18,11 +18,13 @@ import argparse
 import hashlib
 import json
 import os
+import pwd
 import re
 import shlex
 import stat
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +34,8 @@ DEFAULT_CONFIG = REPO_ROOT / "config" / "nano4.json"
 DEFAULT_CASE_REGISTRY = REPO_ROOT / "config" / "case_registry.json"
 MANIFEST_V2 = "hipac26_qe_manifest_v2"
 SUBMIT_COMMAND = "sbatch"
+PERMIT_SCHEMA = "hipac26_qe_submit_permit_v1"
+LEDGER_SCHEMA = "hipac26_qe_submit_ledger_v1"
 
 
 class RunCtlError(RuntimeError):
@@ -63,6 +67,57 @@ def sha256_file(path: Path) -> str:
         for chunk in iter(lambda: f.read(1024 * 1024), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def sha256_text(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
+
+def approved_local_root() -> Path:
+    user = os.environ.get("USER") or pwd.getpwuid(os.getuid()).pw_name
+    return Path("/work") / user / "hipac26-qe-local"
+
+
+def require_controller_local_path(path: Path, label: str) -> Path:
+    root = approved_local_root().resolve()
+    path = path.expanduser().resolve(strict=False)
+    try:
+        path.relative_to(root)
+    except ValueError:
+        fail(f"{label} must be under controller local root: {root}")
+    repo_root = REPO_ROOT.resolve()
+    try:
+        path.relative_to(repo_root)
+    except ValueError:
+        pass
+    else:
+        fail(f"{label} must not be inside the Git repository")
+    return path
+
+
+def validate_controller_directory(path: Path, label: str, *, create: bool = False) -> None:
+    if path.exists() and path.is_symlink():
+        fail(f"{label} must not be a symlink: {path}")
+    if create:
+        path.mkdir(parents=True, exist_ok=True)
+    if not path.is_dir():
+        fail(f"{label} must be a directory: {path}")
+    if path.is_symlink():
+        fail(f"{label} must not be a symlink: {path}")
+    st = path.stat()
+    if st.st_uid != os.getuid():
+        fail(f"{label} must be owned by current user: {path}")
+    mode = stat.S_IMODE(st.st_mode)
+    if mode & 0o002:
+        fail(f"{label} must not be world-writable: {path}: {oct(mode)}")
+
+
+def canonical_json_bytes(data: dict[str, Any]) -> bytes:
+    return (json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+
+
+def manifest_sha256(path: Path) -> str:
+    return sha256_file(path)
 
 
 def fail(msg: str) -> None:
@@ -719,7 +774,7 @@ def validate_manifest_v2(
     if manifest["schema_version"] != MANIFEST_V2:
         fail("unsupported manifest v2 schema_version")
     if not re.fullmatch(
-        r"[A-Z0-9]+-(?:[TR][0-9]{3}|NP[0-9]+|PROFILE-NP[0-9]+)",
+        r"[A-Z0-9]+(?:-[A-Z0-9]+)*-(?:[TR][0-9]{3}|NP[0-9]+|PROFILE-NP[0-9]+)",
         require_string(manifest["trial_id"], "trial_id"),
     ):
         fail("invalid trial_id")
@@ -1416,6 +1471,227 @@ def check_hash(path: Path, expected: str, label: str) -> None:
         fail(f"{label} sha256 mismatch: {path}: {actual} != {expected}")
 
 
+def expected_permit_path(manifest_path: Path) -> Path:
+    return manifest_path.parent / "permit_record.json"
+
+
+def manifest_resource_identity(manifest: dict[str, Any]) -> dict[str, Any]:
+    if manifest.get("schema_version") != MANIFEST_V2:
+        return {}
+    if len(manifest.get("jobs", [])) != 1:
+        fail("one-time permit submit supports exactly one job per manifest")
+    job = require_object(manifest["jobs"][0], "jobs[0]")
+    pseudo_hashes = require_object(job.get("pseudo_sha256"), "pseudo_sha256")
+    return {
+        "trial_id": manifest["trial_id"],
+        "build_sha256": job.get("binary_sha256"),
+        "input_sha256": job.get("input_sha256"),
+        "pseudo_sha256": dict(sorted((str(k), str(v)) for k, v in pseudo_hashes.items())),
+        "resources": job.get("slurm"),
+        "job_kind": job.get("job_kind"),
+        "case_id": job.get("case_id"),
+        "runtime_role": job.get("runtime_role"),
+    }
+
+
+def load_and_validate_submit_permit(
+    *,
+    manifest_path: Path,
+    manifest: dict[str, Any],
+) -> dict[str, Any]:
+    if manifest.get("schema_version") != MANIFEST_V2:
+        return {}
+
+    permit_path = expected_permit_path(manifest_path)
+    if not permit_path.is_file() or permit_path.is_symlink():
+        fail(f"submit permit missing or invalid: {permit_path}")
+    permit = read_json(permit_path)
+    required = {
+        "schema_version",
+        "phase_identifier",
+        "trial_id",
+        "manifest_sha256",
+        "build_sha256",
+        "input_sha256",
+        "pseudo_sha256",
+        "resources",
+        "maximum_attempts",
+        "ledger_path",
+    }
+    require_exact_keys(
+        permit,
+        required=required,
+        allowed=required,
+        label="submit permit",
+    )
+    if permit["schema_version"] != PERMIT_SCHEMA:
+        fail("unsupported submit permit schema_version")
+    if permit["trial_id"] != manifest["trial_id"]:
+        fail("submit permit trial_id does not match manifest")
+    actual_manifest_hash = manifest_sha256(manifest_path)
+    if require_sha256(permit["manifest_sha256"], "permit.manifest_sha256") != actual_manifest_hash:
+        fail("submit permit manifest sha256 mismatch")
+    if require_int(permit["maximum_attempts"], "permit.maximum_attempts") != 1:
+        fail("submit permit maximum_attempts must be 1")
+
+    identity = manifest_resource_identity(manifest)
+    if permit["build_sha256"] != identity["build_sha256"]:
+        fail("submit permit build sha256 mismatch")
+    if permit["input_sha256"] != identity["input_sha256"]:
+        fail("submit permit input sha256 mismatch")
+    if permit["pseudo_sha256"] != identity["pseudo_sha256"]:
+        fail("submit permit pseudo sha256 mismatch")
+    if permit["resources"] != identity["resources"]:
+        fail("submit permit resource shape mismatch")
+
+    ledger_path = require_controller_local_path(
+        Path(require_absolute_path(permit["ledger_path"], "permit.ledger_path")),
+        "permit.ledger_path",
+    )
+    validate_controller_directory(ledger_path.parent, "permit ledger parent", create=True)
+    permit["_path"] = str(permit_path)
+    permit["_ledger_path"] = str(ledger_path)
+    permit["_manifest_sha256"] = actual_manifest_hash
+    return permit
+
+
+def acquire_ledger_lock(ledger_path: Path) -> Path:
+    lock_path = ledger_path.with_suffix(ledger_path.suffix + ".lock")
+    deadline = time.monotonic() + 10
+    while True:
+        try:
+            fd = os.open(str(lock_path), os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o600)
+            os.close(fd)
+            return lock_path
+        except FileExistsError:
+            if time.monotonic() >= deadline:
+                fail(f"timeout acquiring submit ledger lock: {lock_path}")
+            time.sleep(0.1)
+
+
+def read_ledger(ledger_path: Path) -> dict[str, Any]:
+    if not ledger_path.exists():
+        return {"schema_version": LEDGER_SCHEMA, "entries": {}}
+    if ledger_path.is_symlink() or not ledger_path.is_file():
+        fail(f"submit ledger must be a regular file: {ledger_path}")
+    ledger = read_json(ledger_path)
+    if ledger.get("schema_version") != LEDGER_SCHEMA:
+        fail("submit ledger schema_version mismatch or tampering detected")
+    if not isinstance(ledger.get("entries"), dict):
+        fail("submit ledger entries must be object")
+    return ledger
+
+
+def atomic_write_ledger(ledger_path: Path, ledger: dict[str, Any]) -> None:
+    tmp = ledger_path.with_name(ledger_path.name + f".tmp.{os.getpid()}")
+    with tmp.open("wb") as f:
+        f.write(canonical_json_bytes(ledger))
+    os.replace(tmp, ledger_path)
+
+
+def consume_submit_permit(
+    *,
+    manifest_path: Path,
+    manifest: dict[str, Any],
+    permit: dict[str, Any],
+) -> dict[str, Any]:
+    if manifest.get("schema_version") != MANIFEST_V2:
+        return {}
+    ledger_path = Path(permit["_ledger_path"])
+    lock_path = acquire_ledger_lock(ledger_path)
+    try:
+        ledger = read_ledger(ledger_path)
+        entries = ledger["entries"]
+        trial_id = permit["trial_id"]
+        existing = entries.get(trial_id)
+        identity = manifest_resource_identity(manifest)
+        entry_identity = {
+            "phase_identifier": permit["phase_identifier"],
+            "trial_id": trial_id,
+            "manifest_sha256": permit["_manifest_sha256"],
+            "build_sha256": permit["build_sha256"],
+            "input_sha256": permit["input_sha256"],
+            "pseudo_sha256": permit["pseudo_sha256"],
+            "exact_resources": permit["resources"],
+            "maximum_attempts": 1,
+            "job_kind": identity["job_kind"],
+            "case_id": identity["case_id"],
+            "runtime_role": identity["runtime_role"],
+        }
+        if existing is not None:
+            comparable = {key: existing.get(key) for key in entry_identity}
+            if comparable != entry_identity:
+                fail("submit ledger trial identity mismatch or tampering detected")
+            if existing.get("attempts_consumed") != 0:
+                fail("submit permit already consumed")
+        attempt = {
+            "attempt_index": 1,
+            "attempt_timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "manifest_path": str(manifest_path),
+            "permit_path": permit["_path"],
+            "wrapper_exit_status": None,
+            "scheduler_contacted": False,
+            "job_id": None,
+            "final_state": "consumed_before_scheduler_contact",
+        }
+        entry = dict(entry_identity)
+        entry.update({"attempts_consumed": 1, "attempts": [attempt]})
+        entries[trial_id] = entry
+        atomic_write_ledger(ledger_path, ledger)
+        return {"ledger_path": str(ledger_path), "trial_id": trial_id, "attempt_index": 1}
+    finally:
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def update_consumed_attempt(
+    permit_audit: dict[str, Any],
+    *,
+    wrapper_exit_status: int | None,
+    scheduler_contacted: bool,
+    job_id: str | None,
+    final_state: str,
+) -> None:
+    if not permit_audit:
+        return
+    ledger_path = Path(permit_audit["ledger_path"])
+    lock_path = acquire_ledger_lock(ledger_path)
+    try:
+        ledger = read_ledger(ledger_path)
+        entry = ledger["entries"].get(permit_audit["trial_id"])
+        if entry is None or not entry.get("attempts"):
+            fail("submit ledger consumed attempt missing")
+        attempt = entry["attempts"][-1]
+        attempt.update(
+            {
+                "wrapper_exit_status": wrapper_exit_status,
+                "scheduler_contacted": scheduler_contacted,
+                "job_id": job_id,
+                "final_state": final_state,
+                "update_timestamp_utc": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            }
+        )
+        atomic_write_ledger(ledger_path, ledger)
+    finally:
+        try:
+            lock_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def create_attempt_directory(manifest_hash: str, trial_id: str) -> Path:
+    root = require_controller_local_path(approved_local_root() / "runctl_attempts", "attempt root")
+    validate_controller_directory(root, "attempt root", create=True)
+    safe_trial = re.sub(r"[^A-Za-z0-9_.-]", "_", trial_id)
+    attempt_name = f"{safe_trial}_{manifest_hash[:16]}_{time.strftime('%Y%m%dT%H%M%SZ', time.gmtime())}_{os.getpid()}"
+    attempt_dir = root / attempt_name
+    attempt_dir.mkdir(mode=0o700, exist_ok=False)
+    validate_controller_directory(attempt_dir, "attempt directory")
+    return attempt_dir
+
+
 def render_slurm_directives(
     slurm: dict[str, Any],
     *,
@@ -1503,26 +1779,16 @@ export QE_INPUT={input_path}
         for idx, _path in enumerate(job["pseudo_paths"], 1)
     )
 
+    map_by = f"--map-by ppr:{slurm['ntasks_per_node']}:node"
     command_parts = [
         launcher,
         "-np",
         str(mpi_ranks),
-        '"$QE_BIN"',
-        "-nk",
-        str(runtime["npools"]),
+        map_by,
+        '"$RANK_WRAPPER_BIN"',
+        ">",
+        "qe.out",
     ]
-
-    if extra_args:
-        command_parts.append(extra_args)
-
-    command_parts.extend(
-        [
-            "-in",
-            '"$QE_INPUT"',
-            ">",
-            "qe.out",
-        ]
-    )
 
     qe_command = " ".join(command_parts)
     profiler = job.get("profiler")
@@ -1540,16 +1806,6 @@ fi
     else:
         profiler_stats = ""
 
-    mapping_body = shlex.quote(r"""set -euo pipefail
-printf 'task_hostname=%s\n' "$(hostname)"
-printf 'SLURM_PROCID=%s\n' "${SLURM_PROCID:-}"
-printf 'SLURM_LOCALID=%s\n' "${SLURM_LOCALID:-}"
-printf 'CUDA_VISIBLE_DEVICES=%s\n' "${CUDA_VISIBLE_DEVICES:-}"
-case "${CUDA_VISIBLE_DEVICES:-}" in
-    ""|*,*) echo 'ERROR: expected one visible GPU per rank' >&2; exit 31 ;;
-esac
-""")
-
     return f"""#!/usr/bin/env bash
 {directives}
 set -euo pipefail
@@ -1560,9 +1816,19 @@ export QE_INPUT={input_path}
 export QE_BIN_SHA256={shlex.quote(job['binary_sha256'])}
 export QE_INPUT_SHA256={shlex.quote(job['input_sha256'])}
 export RUN_DIR={run_dir}
+export HIPAC_EXPECTED_RANKS={slurm['ntasks']}
+export HIPAC_EXPECTED_NODES={slurm['nodes']}
+export HIPAC_EXPECTED_RANKS_PER_NODE={slurm['ntasks_per_node']}
+export HIPAC_EXPECTED_GPUS_PER_NODE={slurm['gpus_per_node']}
+export HIPAC_QE_NPOOLS={runtime['npools']}
+export HIPAC_QE_EXTRA_ARGS={shlex.quote(' '.join(runtime.get('extra_args', [])))}
+export HIPAC_MAPPING_TIMEOUT_SECONDS=120
+export HIPAC_MAPPING_RECORDS_DIR="$RUN_DIR/mapping_raw"
+export HIPAC_MAPPING_STATE_DIR="$RUN_DIR/mapping_state"
+export HIPAC_MAPPING_VALIDATOR={shlex.quote(str(REPO_ROOT / 'scripts' / 'qe_mapping_validator.py'))}
 {pseudo_exports}
 
-mkdir -p "$RUN_DIR"
+mkdir -p "$RUN_DIR" "$HIPAC_MAPPING_RECORDS_DIR" "$HIPAC_MAPPING_STATE_DIR"
 
 check_hash() {{
     path="$1"
@@ -1605,14 +1871,38 @@ case "$MPI_ROUTE_IDENTITY" in
     *hpcx*|*HPCX*|*HPC-X*|*nvhpc*|*NVHPC*|*x86-nvhpc*) ;;
     *) echo 'ERROR: resolved MPI route is not identifiable as approved NVHPC/HPC-X after profile load' >&2; exit 23 ;;
 esac
+export HIPAC_MPI_ROUTE_IDENTITY="$MPI_ROUTE_IDENTITY"
 
-srun \
-    --nodes={slurm['nodes']} \
-    --ntasks={slurm['ntasks']} \
-    --ntasks-per-node={slurm['ntasks_per_node']} \
-    --gpus-per-task=1 \
-    --gpu-bind=single:1 \
-    bash -lc {mapping_body} | tee "$RUN_DIR/mapping_guard.out"
+WRAPPER_SRC={shlex.quote(str(REPO_ROOT / 'scripts' / 'qe_rank_wrapper.cu'))}
+RANK_WRAPPER_BIN="$RUN_DIR/qe_rank_wrapper"
+export RANK_WRAPPER_BIN
+if [ ! -r "$WRAPPER_SRC" ] || [ ! -r "$HIPAC_MAPPING_VALIDATOR" ]; then
+    echo 'ERROR: controller-owned rank wrapper or validator is not readable' >&2
+    exit 24
+fi
+HIPAC_WRAPPER_SOURCE_SHA256=$(sha256sum "$WRAPPER_SRC" | awk '{{print $1}}')
+HIPAC_MAPPING_VALIDATOR_SHA256=$(sha256sum "$HIPAC_MAPPING_VALIDATOR" | awk '{{print $1}}')
+export HIPAC_WRAPPER_SOURCE_SHA256 HIPAC_MAPPING_VALIDATOR_SHA256
+printf 'rank_wrapper_source=%s\n' "$WRAPPER_SRC"
+printf 'rank_wrapper_source_sha256=%s\n' "$HIPAC_WRAPPER_SOURCE_SHA256"
+printf 'mapping_validator=%s\n' "$HIPAC_MAPPING_VALIDATOR"
+printf 'mapping_validator_sha256=%s\n' "$HIPAC_MAPPING_VALIDATOR_SHA256"
+
+CUDA_WRAPPER_COMPILER=$(command -v nvcc || true)
+if [ -n "$CUDA_WRAPPER_COMPILER" ]; then
+    "$CUDA_WRAPPER_COMPILER" "$WRAPPER_SRC" -o "$RANK_WRAPPER_BIN"
+else
+    CUDA_WRAPPER_COMPILER=$(command -v nvc++ || true)
+    if [ -z "$CUDA_WRAPPER_COMPILER" ]; then
+        echo 'ERROR: approved NVHPC/CUDA compiler not resolved for rank wrapper' >&2
+        exit 25
+    fi
+    "$CUDA_WRAPPER_COMPILER" -cuda "$WRAPPER_SRC" -o "$RANK_WRAPPER_BIN"
+fi
+chmod 750 "$RANK_WRAPPER_BIN"
+printf 'rank_wrapper_compiler=%s\n' "$CUDA_WRAPPER_COMPILER"
+printf 'launcher_matched_rank_wrapper=true\n'
+printf 'qe_exec_pre_mapping_guard=forbidden\n'
 
 {qe_command}
 {profiler_stats}
@@ -2036,9 +2326,36 @@ def validate_rendered_script_for_job(
     if kind != "qe":
         fail(f"unsupported rendered job_kind: {kind}")
 
-    for token in ('"$QE_BIN"', '"$QE_INPUT"', "qe.out"):
+    if "ntasks_per_node" not in job.get("slurm", {}):
+        for token in ('"$QE_BIN"', '"$QE_INPUT"', "qe.out"):
+            if token not in script:
+                fail(f"legacy QE rendered script missing required token: {token}")
+        return
+
+    required_tokens = (
+        "mpirun --bind-to none",
+        '"$RANK_WRAPPER_BIN"',
+        "qe_rank_wrapper.cu",
+        "qe_mapping_validator.py",
+        "launcher_matched_rank_wrapper=true",
+        "HIPAC_MAPPING_RECORDS_DIR",
+        "HIPAC_MAPPING_STATE_DIR",
+        "HIPAC_EXPECTED_RANKS",
+        "HIPAC_EXPECTED_RANKS_PER_NODE",
+        "HIPAC_EXPECTED_GPUS_PER_NODE",
+        "HIPAC_MPI_ROUTE_IDENTITY",
+        "qe.out",
+    )
+    for token in required_tokens:
         if token not in script:
             fail(f"QE rendered script missing required token: {token}")
+    forbidden_patterns = {
+        "independent srun mapping proof": r"\bsrun\b.*mapping",
+        "manifest-provided wrapper": r"\$\{?MANIFEST_.*WRAPPER",
+    }
+    for label, pattern in forbidden_patterns.items():
+        if re.search(pattern, script):
+            fail(f"QE rendered script contains forbidden token: {label}")
 
 
 def cmd_render(args: argparse.Namespace) -> int:
@@ -2197,9 +2514,31 @@ def cmd_validate(args: argparse.Namespace) -> int:
 
 
 def cmd_submit(args: argparse.Namespace) -> int:
-    manifest = load_manifest(Path(args.manifest))
+    manifest_path = Path(args.manifest)
+    manifest = load_manifest(manifest_path)
     validate_manifest(manifest, submit_mode=True, strict_files=args.strict_files)
     validate_rendered_files(manifest)
+    permit = load_and_validate_submit_permit(
+        manifest_path=manifest_path,
+        manifest=manifest,
+    )
+    permit_audit = consume_submit_permit(
+        manifest_path=manifest_path,
+        manifest=manifest,
+        permit=permit,
+    )
+
+    attempt_dir = create_attempt_directory(
+        permit.get("_manifest_sha256", manifest_sha256(manifest_path)) if permit else manifest_sha256(manifest_path),
+        manifest["trial_id"],
+    )
+    write_json(attempt_dir / "submit_attempt.json", {
+        "trial_id": manifest["trial_id"],
+        "manifest_path": str(manifest_path),
+        "manifest_sha256": manifest_sha256(manifest_path),
+        "scheduler_contacted": False,
+        "retention": "controller_audit_no_secrets",
+    })
 
     submit_cmd = production_submit_command()
     submitted: list[dict[str, str]] = []
@@ -2214,10 +2553,32 @@ def cmd_submit(args: argparse.Namespace) -> int:
             stderr=subprocess.PIPE,
             check=False,
         )
+        write_json(attempt_dir / "scheduler_result.json", {
+            "trial_id": manifest["trial_id"],
+            "config_id": job["config_id"],
+            "returncode": result.returncode,
+            "stdout": result.stdout,
+            "stderr": result.stderr,
+            "scheduler_contacted": True,
+        })
         if result.returncode != 0:
+            update_consumed_attempt(
+                permit_audit,
+                wrapper_exit_status=result.returncode,
+                scheduler_contacted=True,
+                job_id=None,
+                final_state="scheduler_rejected",
+            )
             fail(f"submit failed for {job['config_id']}: {result.stderr.strip()}")
         match = re.search(r"(\d+)", result.stdout)
         if not match:
+            update_consumed_attempt(
+                permit_audit,
+                wrapper_exit_status=result.returncode,
+                scheduler_contacted=True,
+                job_id=None,
+                final_state="job_id_parse_failed_after_scheduler_contact",
+            )
             fail(f"cannot parse job id for {job['config_id']}: {result.stdout.strip()}")
         job_id = match.group(1)
         (run_dir / "job_id.txt").write_text(job_id + "\n", encoding="utf-8")
@@ -2227,7 +2588,17 @@ def cmd_submit(args: argparse.Namespace) -> int:
             "job_id": job_id,
             "benchmark_valid": False,
             "submitter": "qe_runctl.py",
+            "manifest_sha256": manifest_sha256(manifest_path),
+            "permit_consumed": True,
+            "attempt_index": permit_audit.get("attempt_index") if permit_audit else None,
         })
+        update_consumed_attempt(
+            permit_audit,
+            wrapper_exit_status=result.returncode,
+            scheduler_contacted=True,
+            job_id=job_id,
+            final_state="submitted",
+        )
         submitted.append({"config_id": job["config_id"], "job_id": job_id})
     print(json.dumps({"submitted": submitted}, indent=2))
     return 0
@@ -2239,6 +2610,11 @@ def parse_qe_output(path: Path) -> dict[str, Any]:
         r"^\s*!?\s*total energy\s+=\s+(-?\d+\.\d+)\s+Ry",
         text,
         re.MULTILINE,
+    )
+    accuracy_matches = re.findall(
+        r"estimated\s+scf\s+accuracy\s+<\s+([0-9.+\-Ee]+)\s+Ry",
+        text,
+        re.IGNORECASE,
     )
     iteration_count = len(re.findall(r"^\s*iteration\s+#", text, re.MULTILINE))
     converged = "convergence has been achieved" in text.lower()
@@ -2286,6 +2662,8 @@ def parse_qe_output(path: Path) -> dict[str, Any]:
         "maxstep_stop": maxstep_stop,
         "final_energy_ry": float(energy_matches[-1]) if energy_matches else None,
         "total_energy_sequence_ry": [float(value) for value in energy_matches],
+        "estimated_scf_accuracy_sequence_ry": [float(value) for value in accuracy_matches],
+        "final_estimated_scf_accuracy_ry": float(accuracy_matches[-1]) if accuracy_matches else None,
         "scf_iterations": iteration_count if iteration_count else None,
         "atoms": int_match(r"number of atoms/cell\s+=\s+(\d+)"),
         "electrons": float_match(r"number of electrons\s+=\s+([0-9.]+)"),
