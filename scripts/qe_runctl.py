@@ -2235,10 +2235,39 @@ def cmd_submit(args: argparse.Namespace) -> int:
 
 def parse_qe_output(path: Path) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8", errors="replace")
-    energy_matches = re.findall(r"!\s+total energy\s+=\s+(-?\d+\.\d+)\s+Ry", text)
+    energy_matches = re.findall(
+        r"^\s*!?\s*total energy\s+=\s+(-?\d+\.\d+)\s+Ry",
+        text,
+        re.MULTILINE,
+    )
     iteration_count = len(re.findall(r"^\s*iteration\s+#", text, re.MULTILINE))
     converged = "convergence has been achieved" in text.lower()
+    maxstep_stop = "convergence not achieved after" in text.lower()
     job_done = "JOB DONE" in text
+
+    def int_match(pattern: str) -> int | None:
+        match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
+        return int(match.group(1)) if match else None
+
+    def float_match(pattern: str) -> float | None:
+        match = re.search(pattern, text, re.MULTILINE | re.IGNORECASE)
+        return float(match.group(1)) if match else None
+
+    dense_grid = None
+    dense_match = re.search(
+        r"Dense\s+grid:\s+\d+\s+G-vectors\s+FFT dimensions:\s+\(\s*(\d+),\s*(\d+),\s*(\d+)\)",
+        text,
+    )
+    if dense_match:
+        dense_grid = [int(value) for value in dense_match.groups()]
+
+    smooth_grid = None
+    smooth_match = re.search(
+        r"Smooth\s+grid:\s+\d+\s+G-vectors\s+FFT dimensions:\s+\(\s*(\d+),\s*(\d+),\s*(\d+)\)",
+        text,
+    )
+    if smooth_match:
+        smooth_grid = [int(value) for value in smooth_match.groups()]
 
     wall_seconds = None
     m = re.search(r"PWSCF\s+:.*?CPU.*?(\d+)h(\d+)m([0-9.]+)s\s+WALL", text)
@@ -2254,8 +2283,16 @@ def parse_qe_output(path: Path) -> dict[str, Any]:
         "benchmark_valid": False,
         "job_done": job_done,
         "converged": converged,
+        "maxstep_stop": maxstep_stop,
         "final_energy_ry": float(energy_matches[-1]) if energy_matches else None,
+        "total_energy_sequence_ry": [float(value) for value in energy_matches],
         "scf_iterations": iteration_count if iteration_count else None,
+        "atoms": int_match(r"number of atoms/cell\s+=\s+(\d+)"),
+        "electrons": float_match(r"number of electrons\s+=\s+([0-9.]+)"),
+        "bands": int_match(r"number of Kohn-Sham states\s*=\s+(\d+)"),
+        "observed_k_points": int_match(r"number of k points\s*=\s+(\d+)"),
+        "dense_fft_grid": dense_grid,
+        "smooth_fft_grid": smooth_grid,
         "pwscf_wall_seconds": wall_seconds,
     }
 
