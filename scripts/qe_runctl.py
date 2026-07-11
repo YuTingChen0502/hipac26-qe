@@ -1743,8 +1743,8 @@ def render_qe_job_script(job: dict[str, Any]) -> str:
     launcher = runtime.get("launcher", "mpirun --bind-to none")
     mpi_ranks = runtime.get("mpirun_np", slurm["ntasks"])
 
-    binary_path = shlex.quote(job["binary_path"])
-    input_path = shlex.quote(job["input_path"])
+    binary_path = shlex.quote(str(expand_path(job["binary_path"])))
+    input_path = shlex.quote(str(expand_path(job["input_path"])))
 
     if "ntasks_per_node" not in slurm:
         command_parts = [
@@ -1769,9 +1769,9 @@ export QE_INPUT={input_path}
 {' '.join(command_parts)}
 """
 
-    run_dir = shlex.quote(job["run_dir"])
+    run_dir = shlex.quote(str(expand_path(job["run_dir"])))
     pseudo_exports = "\n".join(
-        f"PSEUDO_{idx}={shlex.quote(path)}; PSEUDO_SHA_{idx}={shlex.quote(job['pseudo_sha256'][path])}; export PSEUDO_{idx} PSEUDO_SHA_{idx}"
+        f"PSEUDO_{idx}={shlex.quote(str(expand_path(path)))}; PSEUDO_SHA_{idx}={shlex.quote(job['pseudo_sha256'][path])}; export PSEUDO_{idx} PSEUDO_SHA_{idx}"
         for idx, path in enumerate(job["pseudo_paths"], 1)
     )
     pseudo_checks = "\n".join(

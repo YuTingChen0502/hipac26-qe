@@ -290,6 +290,19 @@ class QERunCtlTests(unittest.TestCase):
         self.assertIn("HIPAC_EXPECTED_RANKS_PER_NODE=4", script)
         self.assertNotRegex(script, r"\bsrun\b.*mapping")
 
+    def test_render_expands_environment_identity_paths_for_runtime_shell(self):
+        manifest = self.manifest_v2("qe", gpus_per_node=1, npools=1)
+        job = manifest["jobs"][0]
+        job["binary_path"] = "/work/$USER/example/bin/app"
+        job["input_path"] = "/work/$USER/example/input.in"
+        job["pseudo_paths"] = ["/work/$USER/example/Au.UPF"]
+        job["pseudo_sha256"] = {"/work/$USER/example/Au.UPF": HEX_C}
+        script = qe_runctl.render_job_script(job)
+        self.assertIn(f"/work/{os.environ.get('USER')}/example/bin/app", script)
+        self.assertIn(f"/work/{os.environ.get('USER')}/example/input.in", script)
+        self.assertIn(f"/work/{os.environ.get('USER')}/example/Au.UPF", script)
+        self.assertNotIn("'/work/$USER/example", script)
+
     def test_manifest_cannot_inject_different_wrapper(self):
         manifest = self.manifest_v2("qe", gpus_per_node=1, npools=1)
         manifest["jobs"][0]["runtime"]["rank_wrapper"] = "/tmp/evil.sh"
