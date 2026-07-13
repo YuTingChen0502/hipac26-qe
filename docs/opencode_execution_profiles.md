@@ -14,6 +14,10 @@ qe-runtime-gated
   scheduler/QE/profiling phases
   must never be launched with --auto
 
+qe-phase-auto
+  full-auto execution for an already-approved runtime phase contract
+  bounded to the fixed chatCD_auto_review evidence root
+
 qe-bounded-phase
   legacy compatibility alias
   prefer one of the two profiles above
@@ -88,6 +92,28 @@ It cannot:
 - modify `opencode.json`, `.opencode/agents/**`, or `.opencode/skills/**`;
 - self-promote to a runtime phase.
 
+## Approved phase full-auto
+
+```bash
+cd /work/$USER/hipac26-qe
+opencode . --agent qe-phase-auto --model openai/gpt-5.5 --auto
+```
+
+Use this only for an already-approved Control Center runtime phase contract that
+freezes the case, build, manifest identities, resource shape, account,
+partition, job and retry budgets, evidence roots, acceptance criteria, and hard
+stop conditions.
+
+Its controller submit allowlist is bounded to manifests below:
+
+```text
+/work/austinhpc25/hipac26-qe-local/control_center/chatCD_auto_review
+```
+
+All other submit forms remain denied. Direct `sbatch`, `srun`, `salloc`,
+`mpirun`, `mpiexec`, `pw.x`, `scancel`, remote Git, history rewrite, controller
+edits, OpenCode policy edits, and physics changes are denied.
+
 ## Human-gated runtime
 
 ```bash
@@ -159,4 +185,5 @@ The final runtime enforcement remains:
 - job and retry budgets;
 - Control Center evidence review.
 
-`--auto` is approved only for `qe-repo-auto`.
+`--auto` is approved only for `qe-repo-auto` repository work or `qe-phase-auto`
+after the Control Center has already approved the exact runtime phase contract.

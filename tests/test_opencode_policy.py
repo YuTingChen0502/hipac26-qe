@@ -42,6 +42,7 @@ class OpenCodePolicyTests(unittest.TestCase):
         cls.config = json.loads(read(CONFIG))
         cls.repo_auto = read(AGENTS / "qe-repo-auto.md")
         cls.runtime = read(AGENTS / "qe-runtime-gated.md")
+        cls.phase_auto = read(AGENTS / "qe-phase-auto.md")
         cls.compat = read(AGENTS / "qe-bounded-phase.md")
         cls.skill = read(SKILL)
 
@@ -73,9 +74,111 @@ class OpenCodePolicyTests(unittest.TestCase):
         for name, text in (
             ("qe-repo-auto", self.repo_auto),
             ("qe-runtime-gated", self.runtime),
+            ("qe-phase-auto", self.phase_auto),
             ("qe-bounded-phase", self.compat),
         ):
             self.assertIn("mode: primary", frontmatter(text), name)
+
+    def test_phase_auto_is_primary_and_fail_closed(self) -> None:
+        fm = frontmatter(self.phase_auto)
+        bash = bash_rule_block(self.phase_auto)
+        self.assertIn("mode: primary", fm)
+        self.assertIn("reasoningEffort: high", fm)
+        self.assertIn("textVerbosity: low", fm)
+        self.assertRegex(bash, r'(?m)^    "\*": deny$')
+        for tool in (
+            "list: allow",
+            "glob: allow",
+            "grep: allow",
+            "lsp: allow",
+            "question: deny",
+            "webfetch: deny",
+            "websearch: deny",
+            "doom_loop: deny",
+        ):
+            self.assertIn(tool, fm)
+
+    def test_phase_auto_submit_is_fixed_to_control_center_root(self) -> None:
+        bash = bash_rule_block(self.phase_auto)
+        broad = '"python3 scripts/qe_runctl.py submit*": deny'
+        exact = (
+            '"python3 scripts/qe_runctl.py submit --manifest '
+            "/work/austinhpc25/hipac26-qe-local/control_center/"
+            'chatCD_auto_review/*/manifest.json": allow'
+        )
+        nested = (
+            '"python3 scripts/qe_runctl.py submit --manifest '
+            "/work/austinhpc25/hipac26-qe-local/control_center/"
+            'chatCD_auto_review/**/manifest.json": allow'
+        )
+        self.assertIn(broad, bash)
+        self.assertIn(exact, bash)
+        self.assertIn(nested, bash)
+        self.assertLess(bash.index(broad), bash.index(exact))
+        self.assertLess(bash.index(broad), bash.index(nested))
+        self.assertNotIn('"python3 scripts/qe_runctl.py submit --manifest *": allow', bash)
+        self.assertNotIn('"python3 scripts/qe_runctl.py submit --manifest *": ask', bash)
+
+    def test_phase_auto_denies_other_submit_and_direct_runtime(self) -> None:
+        bash = bash_rule_block(self.phase_auto)
+        for command in (
+            '"sbatch": deny',
+            '"sbatch *": deny',
+            '"srun": deny',
+            '"srun *": deny',
+            '"salloc": deny',
+            '"salloc *": deny',
+            '"mpirun": deny',
+            '"mpirun *": deny',
+            '"mpiexec": deny',
+            '"mpiexec *": deny',
+            '"pw.x": deny',
+            '"pw.x *": deny',
+            '"scancel": deny',
+            '"scancel *": deny',
+        ):
+            self.assertIn(command, bash)
+
+    def test_phase_auto_denies_controller_and_policy_edits(self) -> None:
+        fm = frontmatter(self.phase_auto)
+        for rule in (
+            '"opencode.json": deny',
+            '"*/opencode.json": deny',
+            '".opencode/**": deny',
+            '"*/.opencode/**": deny',
+            '"scripts/qe_runctl.py": deny',
+            '"scripts/qe_mapping_validator.py": deny',
+            '"scripts/qe_rank_wrapper.cu": deny',
+            '"schemas/**": deny',
+        ):
+            self.assertIn(rule, fm)
+
+    def test_phase_auto_external_roots_are_bounded(self) -> None:
+        fm = frontmatter(self.phase_auto)
+        self.assertIn('external_directory:\n    "*": deny', fm)
+        expected = {
+            '"/work/austinhpc25/hipac26-qe-builds/**": allow',
+            '"/work/austinhpc25/hipac26-qe-pseudos/**": allow',
+            '"/work/austinhpc25/hipac26-qe-cases/**": allow',
+            '"/work/austinhpc25/hipac26-qe-runs/**": allow',
+            '"/work/austinhpc25/hipac26-qe-local/**": allow',
+        }
+        for rule in expected:
+            self.assertIn(rule, fm)
+        self.assertNotIn('"/tmp/**": allow', fm)
+        self.assertNotIn('"/scratch/**": allow', fm)
+
+    def test_phase_auto_denies_remote_and_history_rewrite_git(self) -> None:
+        bash = bash_rule_block(self.phase_auto)
+        for command in (
+            '"git push": deny',
+            '"git push *": deny',
+            '"git merge*": deny',
+            '"git rebase*": deny',
+            '"git reset*": deny',
+            '"git clean*": deny',
+        ):
+            self.assertIn(command, bash)
 
     def test_repo_auto_is_fail_closed(self) -> None:
         fm = frontmatter(self.repo_auto)
@@ -143,6 +246,19 @@ class OpenCodePolicyTests(unittest.TestCase):
         self.assertIn("Compatibility profile only", self.compat)
         self.assertIn("Never use this alias\nwith `--auto`", self.compat)
 
+    def test_existing_repo_and_runtime_profiles_remain_bounded(self) -> None:
+        repo = bash_rule_block(self.repo_auto)
+        runtime = bash_rule_block(self.runtime)
+        self.assertRegex(repo, r'(?m)^    "\*": deny$')
+        self.assertNotIn("qe_runctl.py submit", repo)
+        self.assertIn("may be launched with `--auto`", self.repo_auto)
+        self.assertRegex(runtime, r'(?m)^    "\*": ask$')
+        self.assertIn('"python3 scripts/qe_runctl.py submit*": deny', runtime)
+        self.assertIn(
+            '"python3 scripts/qe_runctl.py submit --manifest *": ask', runtime
+        )
+        self.assertIn("Never use\nthis agent with `--auto`", self.runtime)
+
     def test_skill_exists_and_preserves_gate_control(self) -> None:
         self.assertIn("qe-nano4-bounded-phase-executor", self.skill)
         self.assertIn(
@@ -154,6 +270,7 @@ class OpenCodePolicyTests(unittest.TestCase):
         for name, text in (
             ("repo-auto", self.repo_auto),
             ("runtime", self.runtime),
+            ("phase-auto", self.phase_auto),
             ("compat", self.compat),
         ):
             bash = bash_rule_block(text)
@@ -163,6 +280,11 @@ class OpenCodePolicyTests(unittest.TestCase):
     def test_documented_profiles(self) -> None:
         doc = read(ROOT / "docs" / "opencode_execution_profiles.md")
         self.assertIn("opencode . --agent qe-repo-auto --auto", doc)
+        self.assertIn(
+            "opencode . --agent qe-phase-auto --model openai/gpt-5.5 --auto",
+            doc,
+        )
+        self.assertIn("chatCD_auto_review", doc)
         self.assertIn("opencode . --agent qe-runtime-gated", doc)
         self.assertIn("Never add `--auto`", doc)
 
