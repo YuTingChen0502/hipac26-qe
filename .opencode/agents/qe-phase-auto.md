@@ -26,6 +26,7 @@ permission:
     "/work/austinhpc25/hipac26-qe-builds/**": allow
     "/work/austinhpc25/hipac26-qe-runs/**": allow
     "/work/austinhpc25/hipac26-qe-local/control_center/**": allow
+    "/work/austinhpc25/hipac26-qe/.opencode-runtime/**": allow
 
   edit:
     "*": deny
@@ -78,14 +79,17 @@ permission:
 
     "mkdir -p /work/austinhpc25/hipac26-qe-runs/*": allow
     "mkdir -p /work/austinhpc25/hipac26-qe-local/control_center/*": allow
+    "mkdir -p /work/austinhpc25/hipac26-qe/.opencode-runtime/*": allow
 
     "python3 scripts/qe_runctl.py render*": allow
     "python3 scripts/qe_runctl.py validate*": allow
     "python3 scripts/qe_runctl.py dry-run*": allow
-    "python3 scripts/qe_runctl.py submit*": allow
+    "python3 scripts/qe_runctl.py submit*": deny
     "python3 scripts/qe_runctl.py parse*": allow
     "python3 scripts/qe_runctl.py summarize*": allow
     "python3 scripts/qe_runctl.py profile-summary*": allow
+    "bash /work/austinhpc25/hipac26-qe-local/bin/qe_submit_with_temp_enable.sh *": allow
+    "python3 /work/austinhpc25/hipac26-qe-local/bin/qe_evidence_write.py *": allow
 
     "squeue": allow
     "squeue *": allow
@@ -164,7 +168,7 @@ This agent is pre-authorized to use only:
 - python3 scripts/qe_runctl.py render
 - python3 scripts/qe_runctl.py validate
 - python3 scripts/qe_runctl.py dry-run
-- python3 scripts/qe_runctl.py submit
+- temporary-enable wrapper around qe_runctl.py submit
 - python3 scripts/qe_runctl.py parse
 - python3 scripts/qe_runctl.py summarize
 - python3 scripts/qe_runctl.py profile-summary
