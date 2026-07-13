@@ -104,12 +104,12 @@ class OpenCodePolicyTests(unittest.TestCase):
         exact = (
             '"python3 scripts/qe_runctl.py submit --manifest '
             "/work/austinhpc25/hipac26-qe-local/control_center/"
-            'chatCD_auto_review/*/manifest.json": allow'
+            'chatE_auto_review/*/manifest.json": allow'
         )
         nested = (
             '"python3 scripts/qe_runctl.py submit --manifest '
             "/work/austinhpc25/hipac26-qe-local/control_center/"
-            'chatCD_auto_review/**/manifest.json": allow'
+            'chatE_auto_review/**/manifest.json": allow'
         )
         self.assertIn(broad, bash)
         self.assertIn(exact, bash)
@@ -118,6 +118,15 @@ class OpenCodePolicyTests(unittest.TestCase):
         self.assertLess(bash.index(broad), bash.index(nested))
         self.assertNotIn('"python3 scripts/qe_runctl.py submit --manifest *": allow', bash)
         self.assertNotIn('"python3 scripts/qe_runctl.py submit --manifest *": ask', bash)
+
+    def test_phase_auto_allows_profile_summary_packaging_and_p5_branch_only(self) -> None:
+        bash = bash_rule_block(self.phase_auto)
+        self.assertIn('"python3 scripts/qe_runctl.py profile-summary*": allow', bash)
+        self.assertIn('"python3 scripts/qe_runctl.py package-evidence --root /work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review* --output /work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review*.tgz": allow', bash)
+        self.assertIn('"git switch -c feat/p5-*": allow', bash)
+        self.assertIn('"git switch feat/p5-*": allow', bash)
+        self.assertNotIn('"git switch -c feat/p3-*": allow', bash)
+        self.assertNotIn('"nsys *": allow', bash)
 
     def test_phase_auto_denies_other_submit_and_direct_runtime(self) -> None:
         bash = bash_rule_block(self.phase_auto)
@@ -284,7 +293,7 @@ class OpenCodePolicyTests(unittest.TestCase):
             "opencode . --agent qe-phase-auto --model openai/gpt-5.5 --auto",
             doc,
         )
-        self.assertIn("chatCD_auto_review", doc)
+        self.assertIn("chatE_auto_review", doc)
         self.assertIn("opencode . --agent qe-runtime-gated", doc)
         self.assertIn("Never add `--auto`", doc)
 

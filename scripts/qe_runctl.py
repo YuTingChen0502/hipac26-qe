@@ -24,6 +24,7 @@ import shlex
 import stat
 import subprocess
 import sys
+import tarfile
 import time
 from pathlib import Path
 from typing import Any
@@ -36,6 +37,11 @@ MANIFEST_V2 = "hipac26_qe_manifest_v2"
 SUBMIT_COMMAND = "sbatch"
 PERMIT_SCHEMA = "hipac26_qe_submit_permit_v1"
 LEDGER_SCHEMA = "hipac26_qe_submit_ledger_v1"
+PROFILER_ROUTE = "per_rank"
+PROFILER_MAX_REPORTS = 4
+PROFILER_TRACE_CLASSES = {"cuda", "nvtx", "osrt", "mpi"}
+PROFILE_RAW_SUFFIXES = {".nsys-rep", ".qdstrm", ".sqlite"}
+PACKAGE_RESIDUE_DENYLIST = {"write_test.txt", "write_test2.txt"}
 
 
 class RunCtlError(RuntimeError):
@@ -975,7 +981,17 @@ def validate_job_v2(
     )
 
     if "profiler" in job:
-        validate_profiler(job["profiler"])
+        validate_profiler(
+            job["profiler"],
+            shape=shape,
+            run_dir=Path(require_absolute_path(job["run_dir"], "run_dir")),
+            run_root=Path(
+                require_absolute_path(
+                    require_object(config.get("paths"), "config.paths").get("run_root"),
+                    "config.paths.run_root",
+                )
+            ),
+        )
 
     if strict_files:
         check_hash(
@@ -999,24 +1015,112 @@ def validate_job_v2(
     return kind
 
 
-def validate_profiler(profiler: Any) -> None:
+def validate_profiler(
+    profiler: Any,
+    *,
+    shape: dict[str, int],
+    run_dir: Path,
+    run_root: Path,
+) -> None:
     value = require_object(profiler, "profiler")
-    required = {"enabled", "tool", "output_prefix", "required_download", "optional_download", "remote_only"}
+    required = {
+        "profiler_required",
+        "enabled",
+        "route",
+        "selected_global_ranks",
+        "maximum_report_count",
+        "traces",
+        "output_root",
+        "require_readable_report",
+        "require_stats",
+        "require_cuda_activity",
+    }
     require_exact_keys(
         value,
         required=required,
         allowed=required,
         label="profiler",
     )
-    if value["enabled"] is not True:
-        fail("profiler.enabled must be true when profiler is present")
-    if value["tool"] != "nsys":
-        fail("unsupported profiler tool")
-    prefix = require_string(value["output_prefix"], "profiler.output_prefix")
-    if not re.fullmatch(r"[A-Za-z0-9_.-]+", prefix):
-        fail("profiler.output_prefix contains unsupported characters")
-    for key in ("required_download", "optional_download", "remote_only"):
+    profiler_required = require_bool(value["profiler_required"], "profiler.profiler_required")
+    enabled = require_bool(value["enabled"], "profiler.enabled")
+    if profiler_required and not enabled:
+        fail("profile-required stage cannot disable profiler")
+    if value["route"] != PROFILER_ROUTE:
+        fail("profiler.route must be per_rank; outer-mpirun routes are forbidden")
+    if "command" in value or "shell" in value or "args" in value:
+        fail("profiler must not contain arbitrary command, shell, or args")
+
+    selected = value["selected_global_ranks"]
+    if not isinstance(selected, list) or any(
+        isinstance(rank, bool) or not isinstance(rank, int) for rank in selected
+    ):
+        fail("profiler.selected_global_ranks must be an integer array")
+    if enabled and not selected:
+        fail("enabled profiler requires at least one selected rank")
+    if len(selected) != len(set(selected)):
+        fail("profiler.selected_global_ranks contains duplicates")
+    if len(selected) > PROFILER_MAX_REPORTS:
+        fail("profiler selected ranks exceed hard bound of four")
+    for rank in selected:
+        if rank < 0 or rank >= shape["ntasks"]:
+            fail("profiler selected rank outside MPI range")
+
+    maximum_report_count = require_int(
+        value["maximum_report_count"],
+        "profiler.maximum_report_count",
+    )
+    if maximum_report_count < len(selected) or maximum_report_count > PROFILER_MAX_REPORTS:
+        fail("profiler.maximum_report_count must bound selected ranks and be <= four")
+
+    traces = value["traces"]
+    if not isinstance(traces, list) or not traces:
+        fail("profiler.traces must be a non-empty array")
+    if len(traces) != len(set(traces)):
+        fail("profiler.traces contains duplicates")
+    for trace in traces:
+        if trace not in PROFILER_TRACE_CLASSES:
+            fail(f"unsupported profiler trace class: {trace}")
+    if enabled and not {"cuda", "nvtx"}.issubset(set(traces)):
+        fail("enabled profiler traces must include cuda and nvtx")
+
+    output_root = Path(require_absolute_path(value["output_root"], "profiler.output_root"))
+    reject_existing_symlink_components(output_root, "profiler.output_root")
+    if output_root.exists() and output_root.is_symlink():
+        fail("profiler.output_root must not be a symlink")
+    if not path_is_strict_descendant(output_root, run_dir):
+        fail("profiler.output_root must be inside this job run_dir")
+    if not path_is_strict_descendant(output_root, run_root):
+        fail("profiler.output_root must be inside approved run_root")
+    for key in ("require_readable_report", "require_stats", "require_cuda_activity"):
         require_bool(value[key], f"profiler.{key}")
+
+
+def validate_profiler_recovery_invariants(
+    before: dict[str, Any],
+    after: dict[str, Any],
+) -> None:
+    """Fail closed if an operational recovery weakens a required profiler stage."""
+    before_prof = before.get("profiler")
+    if not isinstance(before_prof, dict) or before_prof.get("profiler_required") is not True:
+        return
+    after_prof = after.get("profiler")
+    if not isinstance(after_prof, dict):
+        fail("recovery cannot remove required profiler specification")
+    invariants = (
+        "profiler_required",
+        "enabled",
+        "route",
+        "selected_global_ranks",
+        "maximum_report_count",
+        "traces",
+        "output_root",
+        "require_readable_report",
+        "require_stats",
+        "require_cuda_activity",
+    )
+    for key in invariants:
+        if after_prof.get(key) != before_prof.get(key):
+            fail(f"recovery cannot weaken required profiler invariant: {key}")
 
 
 def validate_resource_shape(
@@ -1491,6 +1595,7 @@ def manifest_resource_identity(manifest: dict[str, Any]) -> dict[str, Any]:
         "job_kind": job.get("job_kind"),
         "case_id": job.get("case_id"),
         "runtime_role": job.get("runtime_role"),
+        "profiler": job.get("profiler"),
     }
 
 
@@ -1521,7 +1626,7 @@ def load_and_validate_submit_permit(
     require_exact_keys(
         permit,
         required=required,
-        allowed=required,
+        allowed=required | {"profiler"},
         label="submit permit",
     )
     if permit["schema_version"] != PERMIT_SCHEMA:
@@ -1543,6 +1648,8 @@ def load_and_validate_submit_permit(
         fail("submit permit pseudo sha256 mismatch")
     if permit["resources"] != identity["resources"]:
         fail("submit permit resource shape mismatch")
+    if identity.get("profiler") is not None and permit.get("profiler") != identity["profiler"]:
+        fail("submit permit profiler invariant mismatch")
 
     ledger_path = require_controller_local_path(
         Path(require_absolute_path(permit["ledger_path"], "permit.ledger_path")),
@@ -1617,6 +1724,7 @@ def consume_submit_permit(
             "job_kind": identity["job_kind"],
             "case_id": identity["case_id"],
             "runtime_role": identity["runtime_role"],
+            "profiler": identity.get("profiler"),
         }
         if existing is not None:
             comparable = {key: existing.get(key) for key in entry_identity}
@@ -1726,7 +1834,7 @@ def render_slurm_directives(
     return "\n".join(lines)
 
 
-def render_qe_job_script(job: dict[str, Any]) -> str:
+def render_qe_job_script(job: dict[str, Any], *, manifest: dict[str, Any] | None = None) -> str:
     slurm = job["slurm"]
     runtime = job["runtime"]
 
@@ -1793,18 +1901,48 @@ export QE_INPUT={input_path}
     qe_command = " ".join(command_parts)
     profiler = job.get("profiler")
     if profiler:
-        prefix = shlex.quote(profiler["output_prefix"])
-        qe_command = (
-            f"nsys profile --force-overwrite=true --trace=mpi,cuda,nvtx "
-            f"--sample=none --output=\"$RUN_DIR\"/{prefix} {qe_command}"
-        )
-        profiler_stats = f"""
-if command -v nsys >/dev/null 2>&1; then
-    nsys stats --report cuda_api,cuda_gpu_trace,mpi_sum \"$RUN_DIR\"/{prefix}.nsys-rep > \"$RUN_DIR\"/nsys_stats.txt 2>&1 || true
+        selected = ",".join(str(rank) for rank in profiler["selected_global_ranks"])
+        trace_text = ",".join(profiler["traces"])
+        output_root = shlex.quote(str(expand_path(profiler["output_root"])))
+        trial_id = manifest.get("trial_id", "UNKNOWN-TRIAL") if manifest else "UNKNOWN-TRIAL"
+        profiler_exports = f"""
+export HIPAC_PROFILE_REQUIRED={1 if profiler['profiler_required'] else 0}
+export HIPAC_PROFILE_ENABLED={1 if profiler['enabled'] else 0}
+export HIPAC_PROFILE_ROUTE=per_rank
+export HIPAC_PROFILE_SELECTED_GLOBAL_RANKS={shlex.quote(selected)}
+export HIPAC_PROFILE_MAX_REPORTS={profiler['maximum_report_count']}
+export HIPAC_PROFILE_TRACE={shlex.quote(trace_text)}
+export HIPAC_PROFILE_OUTPUT_ROOT={output_root}
+export HIPAC_PROFILE_REQUIRE_READABLE_REPORT={1 if profiler['require_readable_report'] else 0}
+export HIPAC_PROFILE_REQUIRE_STATS={1 if profiler['require_stats'] else 0}
+export HIPAC_PROFILE_REQUIRE_CUDA_ACTIVITY={1 if profiler['require_cuda_activity'] else 0}
+export HIPAC_PROFILE_TRIAL_ID={shlex.quote(trial_id)}
+"""
+        profiler_setup = f"""
+if [ "$HIPAC_PROFILE_ENABLED" = "1" ]; then
+    mkdir -p "$HIPAC_PROFILE_OUTPUT_ROOT"
+    if [ -L "$HIPAC_PROFILE_OUTPUT_ROOT" ]; then
+        echo 'ERROR: profiler output root is a symlink' >&2
+        exit 26
+    fi
+    HIPAC_NSYS_BIN=$(command -v nsys || true)
+    if [ -z "$HIPAC_NSYS_BIN" ]; then
+        echo 'ERROR: nsys not resolved for required per-rank profiling' >&2
+        exit 27
+    fi
+    export HIPAC_NSYS_BIN
+fi
+export HIPAC_RUNCTL={shlex.quote(str(REPO_ROOT / 'scripts' / 'qe_runctl.py'))}
+"""
+        profiler_summary = """
+if [ "$HIPAC_PROFILE_REQUIRED" = "1" ]; then
+    python3 "$HIPAC_RUNCTL" profile-summary --metadata "$RUN_DIR/metadata.json" --output "$RUN_DIR/profiler_acceptance.json"
 fi
 """
     else:
-        profiler_stats = ""
+        profiler_exports = ""
+        profiler_setup = ""
+        profiler_summary = ""
 
     return f"""#!/usr/bin/env bash
 {directives}
@@ -1826,6 +1964,7 @@ export HIPAC_MAPPING_TIMEOUT_SECONDS=120
 export HIPAC_MAPPING_RECORDS_DIR="$RUN_DIR/mapping_raw"
 export HIPAC_MAPPING_STATE_DIR="$RUN_DIR/mapping_state"
 export HIPAC_MAPPING_VALIDATOR={shlex.quote(str(REPO_ROOT / 'scripts' / 'qe_mapping_validator.py'))}
+{profiler_exports}
 {pseudo_exports}
 
 mkdir -p "$RUN_DIR" "$HIPAC_MAPPING_RECORDS_DIR" "$HIPAC_MAPPING_STATE_DIR"
@@ -1903,9 +2042,10 @@ chmod 750 "$RANK_WRAPPER_BIN"
 printf 'rank_wrapper_compiler=%s\n' "$CUDA_WRAPPER_COMPILER"
 printf 'launcher_matched_rank_wrapper=true\n'
 printf 'qe_exec_pre_mapping_guard=forbidden\n'
+{profiler_setup}
 
 {qe_command}
-{profiler_stats}
+{profiler_summary}
 """
 
 
@@ -1919,6 +2059,7 @@ def build_job_metadata(
         "trial_id": manifest["trial_id"],
         "config_id": job["config_id"],
         "job_kind": kind,
+        "run_dir": job["run_dir"],
         "benchmark_valid": False,
         "performance_claim_allowed": False,
         "optimization_claim_allowed": False,
@@ -2250,7 +2391,7 @@ def render_job_script(
     kind = job.get("job_kind", "qe")
 
     if kind == "qe":
-        return render_qe_job_script(job)
+        return render_qe_job_script(job, manifest=manifest)
     if kind == "environment_probe":
         return render_environment_probe_script(
             job,
@@ -2356,6 +2497,19 @@ def validate_rendered_script_for_job(
     for label, pattern in forbidden_patterns.items():
         if re.search(pattern, script):
             fail(f"QE rendered script contains forbidden token: {label}")
+
+    if job.get("profiler"):
+        for token in (
+            "HIPAC_PROFILE_ROUTE=per_rank",
+            "HIPAC_PROFILE_SELECTED_GLOBAL_RANKS",
+            "HIPAC_PROFILE_OUTPUT_ROOT",
+            "HIPAC_NSYS_BIN",
+            "profile-summary --metadata",
+        ):
+            if token not in script:
+                fail(f"profiled QE rendered script missing required token: {token}")
+        if re.search(r"nsys\s+profile.*mpirun", script, re.DOTALL):
+            fail("profiled QE rendered script contains forbidden outer nsys route")
 
 
 def cmd_render(args: argparse.Namespace) -> int:
@@ -2687,6 +2841,234 @@ def require_qe_jobs(
             )
 
 
+def safe_artifact_component(value: str) -> str:
+    value = re.sub(r"[^A-Za-z0-9_.-]+", "_", value.strip())
+    return value.strip("._") or "unknown"
+
+
+def profile_report_prefix(trial_id: str, hostname: str, rank: int) -> str:
+    return f"{safe_artifact_component(trial_id)}_{safe_artifact_component(hostname)}_rank{rank}"
+
+
+def read_mapping_record(run_dir: Path, rank: int) -> dict[str, Any] | None:
+    path = run_dir / "mapping_raw" / f"rank_{rank}.json"
+    if not path.is_file() or path.is_symlink():
+        return None
+    try:
+        return read_json(path)
+    except Exception:
+        return None
+
+
+def mapping_passed(run_dir: Path) -> bool:
+    summary_path = run_dir / "mapping_summary.json"
+    if not summary_path.is_file() or summary_path.is_symlink():
+        return False
+    try:
+        summary = read_json(summary_path)
+    except Exception:
+        return False
+    return summary.get("classification") == "PASS"
+
+
+def qe_job_done(run_dir: Path) -> bool:
+    parsed_path = run_dir / "parsed.json"
+    if parsed_path.is_file() and not parsed_path.is_symlink():
+        try:
+            if read_json(parsed_path).get("job_done") is True:
+                return True
+        except Exception:
+            pass
+    qe_out = run_dir / "qe.out"
+    if qe_out.is_file() and not qe_out.is_symlink():
+        text = qe_out.read_text(encoding="utf-8", errors="replace")
+        return "JOB DONE" in text
+    return False
+
+
+def path_readable_nonempty(path: Path) -> tuple[bool, int]:
+    if path.is_symlink() or not path.is_file():
+        return False, 0
+    size = path.stat().st_size
+    if size <= 0:
+        return False, size
+    try:
+        with path.open("rb") as f:
+            f.read(1)
+    except OSError:
+        return False, size
+    return True, size
+
+
+def sha256_file_if_readable(path: Path) -> str | None:
+    try:
+        return sha256_file(path)
+    except OSError:
+        return None
+
+
+def generate_nsys_stats(report: Path, stats_path: Path) -> bool:
+    nsys = shutil_which("nsys")
+    if not nsys:
+        return False
+    result = subprocess.run(
+        [
+            nsys,
+            "stats",
+            "--report",
+            "cuda_api,cuda_gpu_trace,nvtx_sum,mpi_sum,osrt_sum",
+            "--format",
+            "csv",
+            str(report),
+        ],
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if result.returncode != 0 or not result.stdout.strip():
+        stats_path.write_text(result.stderr, encoding="utf-8")
+        return False
+    stats_path.write_text(result.stdout, encoding="utf-8")
+    return True
+
+
+def shutil_which(name: str) -> str | None:
+    for directory in os.environ.get("PATH", "").split(os.pathsep):
+        candidate = Path(directory) / name
+        if candidate.is_file() and os.access(candidate, os.X_OK):
+            return str(candidate)
+    return None
+
+
+def stats_activity_flags(text: str) -> dict[str, bool]:
+    lower = text.lower()
+    return {
+        "pw_process_observed": "pw.x" in lower or "pwscf" in lower,
+        "cuda_activity_observed": "cuda" in lower and not re.search(r"cuda[^\n]*,\s*0\s*(?:\n|$)", lower),
+        "nvtx_activity_observed": "nvtx" in lower and not re.search(r"nvtx[^\n]*,\s*0\s*(?:\n|$)", lower),
+    }
+
+
+def profile_acceptance_from_metadata(
+    metadata: dict[str, Any],
+    *,
+    generate_stats: bool,
+) -> dict[str, Any]:
+    profiler = metadata.get("profiler") if isinstance(metadata.get("profiler"), dict) else {}
+    run_dir = Path(require_absolute_path(metadata.get("run_dir", ""), "metadata.run_dir")) if metadata.get("run_dir") else None
+    if run_dir is None:
+        # Older metadata did not carry run_dir; infer from output_root for profiled jobs.
+        if profiler.get("output_root"):
+            run_dir = Path(require_absolute_path(profiler["output_root"], "profiler.output_root")).parent
+        else:
+            run_dir = Path("/")
+    profiler_required = profiler.get("profiler_required") is True
+    profiler_enabled = profiler.get("enabled") is True
+    route = profiler.get("route")
+    selected = list(profiler.get("selected_global_ranks") or [])
+    expected_report_count = len(selected) if profiler_enabled else 0
+    output_root = Path(profiler["output_root"]) if profiler.get("output_root") else run_dir / "profiles"
+    trial_id = require_string(metadata.get("trial_id", "UNKNOWN-TRIAL"), "metadata.trial_id")
+
+    reports: list[dict[str, Any]] = []
+    observed_report_count = 0
+    all_readable = bool(selected)
+    all_nonempty = bool(selected)
+    all_stats = bool(selected)
+    combined_stats_text = ""
+
+    for rank in selected:
+        mapping = read_mapping_record(run_dir, rank) or {}
+        host = str(mapping.get("hostname") or "unknown")
+        exact = output_root / f"{profile_report_prefix(trial_id, host, rank)}.nsys-rep"
+        candidates = [exact] if exact.exists() else sorted(output_root.glob(f"*rank{rank}.nsys-rep"))
+        report = candidates[0] if len(candidates) == 1 else exact
+        readable, size = path_readable_nonempty(report)
+        if report.exists() and report.is_file():
+            observed_report_count += 1
+        all_readable = all_readable and readable
+        all_nonempty = all_nonempty and size > 0
+        stats_path = report.with_suffix(".stats.csv")
+        stats_ok = stats_path.is_file() and not stats_path.is_symlink() and stats_path.stat().st_size > 0
+        if not stats_ok and readable and profiler.get("require_stats") is True and generate_stats:
+            stats_ok = generate_nsys_stats(report, stats_path)
+        stats_text = ""
+        if stats_path.is_file() and not stats_path.is_symlink():
+            stats_text = stats_path.read_text(encoding="utf-8", errors="replace")
+            combined_stats_text += "\n" + stats_text
+        all_stats = all_stats and stats_ok
+        reports.append(
+            {
+                "path": str(report),
+                "size": size,
+                "sha256": sha256_file_if_readable(report),
+                "selected_rank": rank,
+                "hostname": host,
+                "readable": readable,
+                "stats_path": str(stats_path),
+                "stats_status": "generated" if stats_ok else "missing_or_failed",
+                "retention_class": "remote_only_raw_profile_compact_stats_in_evidence",
+            }
+        )
+
+    qe_out = run_dir / "qe.out"
+    qe_text = qe_out.read_text(encoding="utf-8", errors="replace") if qe_out.is_file() else ""
+    flags = stats_activity_flags(combined_stats_text + "\n" + qe_text)
+    mapping_ok = mapping_passed(run_dir)
+    qe_done = qe_job_done(run_dir)
+    require_stats = profiler.get("require_stats") is True
+    require_cuda = profiler.get("require_cuda_activity") is True
+    require_nvtx = "nvtx" in set(profiler.get("traces") or [])
+    acceptance = all(
+        [
+            profiler_required,
+            profiler_enabled,
+            route == PROFILER_ROUTE,
+            expected_report_count > 0,
+            observed_report_count == expected_report_count,
+            all_nonempty,
+            all_readable if profiler.get("require_readable_report") is True else True,
+            all_stats if require_stats else True,
+            flags["pw_process_observed"],
+            flags["cuda_activity_observed"] if require_cuda else True,
+            flags["nvtx_activity_observed"] if require_nvtx else True,
+            mapping_ok,
+            qe_done,
+        ]
+    )
+    return {
+        "schema_version": "hipac26_qe_profiler_acceptance_v1",
+        "profiler_required": profiler_required,
+        "profiler_enabled": profiler_enabled,
+        "route": route,
+        "selected_ranks": selected,
+        "expected_report_count": expected_report_count,
+        "observed_report_count": observed_report_count,
+        "reports_nonempty": all_nonempty,
+        "reports_readable": all_readable,
+        "stats_generated": all_stats,
+        "pw_process_observed": flags["pw_process_observed"],
+        "cuda_activity_observed": flags["cuda_activity_observed"],
+        "nvtx_activity_observed": flags["nvtx_activity_observed"],
+        "mapping_pass": mapping_ok,
+        "qe_job_done": qe_done,
+        "acceptance": acceptance,
+        "reports": reports,
+    }
+
+
+def cmd_profile_summary(args: argparse.Namespace) -> int:
+    metadata = read_json(Path(args.metadata))
+    result = profile_acceptance_from_metadata(metadata, generate_stats=True)
+    output = Path(args.output) if args.output else Path(metadata.get("run_dir", ".")) / "profiler_acceptance.json"
+    write_json(output, result)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    if result["profiler_required"] and not result["acceptance"]:
+        return 2
+    return 0
+
+
 def cmd_parse(args: argparse.Namespace) -> int:
     manifest = load_manifest(Path(args.manifest))
     validate_manifest(manifest, submit_mode=False, strict_files=False)
@@ -2706,6 +3088,10 @@ def cmd_parse(args: argparse.Namespace) -> int:
             "slurm": job["slurm"],
         })
         write_json(run_dir / "parsed.json", parsed)
+        if job.get("profiler"):
+            metadata = build_job_metadata(manifest, job)
+            acceptance = profile_acceptance_from_metadata(metadata, generate_stats=False)
+            write_json(run_dir / "profiler_acceptance.json", acceptance)
     print("parse PASS")
     return 0
 
@@ -2720,6 +3106,12 @@ def cmd_summarize(args: argparse.Namespace) -> int:
         if not parsed_path.exists():
             continue
         parsed = read_json(parsed_path)
+        profiler_acceptance = None
+        profiler_path = run_dir / "profiler_acceptance.json"
+        if profiler_path.exists() and not profiler_path.is_symlink():
+            profiler_acceptance = read_json(profiler_path).get("acceptance")
+        elif job.get("profiler", {}).get("profiler_required") is True:
+            profiler_acceptance = False
         rows.append({
             "config_id": job["config_id"],
             "benchmark_valid": False,
@@ -2731,6 +3123,8 @@ def cmd_summarize(args: argparse.Namespace) -> int:
             "ntasks": job["slurm"].get("ntasks"),
             "omp_num_threads": job["runtime"].get("omp_num_threads"),
             "npools": job["runtime"].get("npools"),
+            "profiler_required": job.get("profiler", {}).get("profiler_required") is True,
+            "profiler_acceptance": profiler_acceptance,
         })
     summary = {
         "trial_id": manifest["trial_id"],
@@ -2741,6 +3135,58 @@ def cmd_summarize(args: argparse.Namespace) -> int:
     out = Path(args.output) if args.output else Path("summary.json")
     write_json(out, summary)
     print(f"summary written: {out}")
+    return 0
+
+
+def should_package_file(path: Path) -> bool:
+    if path.name in PACKAGE_RESIDUE_DENYLIST:
+        return False
+    if path.suffix in PROFILE_RAW_SUFFIXES:
+        return False
+    if "__pycache__" in path.parts:
+        return False
+    return path.is_file() and not path.is_symlink()
+
+
+def package_evidence_root(root: Path, output: Path) -> dict[str, Any]:
+    root = root.resolve(strict=True)
+    output = output.resolve(strict=False)
+    require_controller_local_path(root, "evidence root")
+    require_controller_local_path(output, "evidence bundle")
+    if not root.is_dir() or root.is_symlink():
+        fail(f"evidence root must be a non-symlink directory: {root}")
+    if "chatE_auto_review" not in str(root):
+        fail("evidence packaging is bounded to chatE_auto_review roots")
+    if output.exists():
+        fail(f"evidence bundle output already exists: {output}")
+
+    files = [p for p in sorted(root.rglob("*")) if should_package_file(p)]
+    sums_path = root / "SHA256SUMS"
+    with sums_path.open("w", encoding="utf-8") as sums:
+        for path in files:
+            if path == sums_path:
+                continue
+            rel = path.relative_to(root).as_posix()
+            sums.write(f"{sha256_file(path)}  {rel}\n")
+    files = [p for p in sorted(root.rglob("*")) if should_package_file(p)]
+    with tarfile.open(output, "w:gz") as tf:
+        for path in files:
+            rel = Path(root.name) / path.relative_to(root)
+            tf.add(path, arcname=rel.as_posix(), recursive=False)
+    return {
+        "schema_version": "hipac26_qe_evidence_bundle_v1",
+        "root": str(root),
+        "output": str(output),
+        "sha256": sha256_file(output),
+        "files_packaged": len(files),
+        "sha256sums_relative_to_bundle_root": True,
+        "residue_excluded": sorted(PACKAGE_RESIDUE_DENYLIST),
+    }
+
+
+def cmd_package_evidence(args: argparse.Namespace) -> int:
+    result = package_evidence_root(Path(args.root), Path(args.output))
+    print(json.dumps(result, indent=2, sort_keys=True))
     return 0
 
 
@@ -2779,6 +3225,16 @@ def build_parser() -> argparse.ArgumentParser:
     sm.add_argument("--manifest", required=True)
     sm.add_argument("--output")
     sm.set_defaults(func=cmd_summarize)
+
+    ps = sub.add_parser("profile-summary")
+    ps.add_argument("--metadata", required=True)
+    ps.add_argument("--output")
+    ps.set_defaults(func=cmd_profile_summary)
+
+    pe = sub.add_parser("package-evidence")
+    pe.add_argument("--root", required=True)
+    pe.add_argument("--output", required=True)
+    pe.set_defaults(func=cmd_package_evidence)
     return p
 
 

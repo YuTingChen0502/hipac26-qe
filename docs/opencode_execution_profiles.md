@@ -16,7 +16,7 @@ qe-runtime-gated
 
 qe-phase-auto
   full-auto execution for an already-approved runtime phase contract
-  bounded to the fixed chatCD_auto_review evidence root
+  bounded to the fixed chatE_auto_review evidence root
 
 qe-bounded-phase
   legacy compatibility alias
@@ -107,7 +107,7 @@ stop conditions.
 Its controller submit allowlist is bounded to manifests below:
 
 ```text
-/work/austinhpc25/hipac26-qe-local/control_center/chatCD_auto_review
+/work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review
 ```
 
 All other submit forms remain denied. Direct `sbatch`, `srun`, `salloc`,

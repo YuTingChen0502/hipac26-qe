@@ -251,6 +251,48 @@ class QERunCtlTests(unittest.TestCase):
                 case_registry=registry or self.registry,
             )
 
+    def add_profiler(self, manifest, *, ranks=None, enabled=True, required=True):
+        job = manifest["jobs"][0]
+        ranks = [0] if ranks is None else ranks
+        job["profiler"] = {
+            "profiler_required": required,
+            "enabled": enabled,
+            "route": "per_rank",
+            "selected_global_ranks": ranks,
+            "maximum_report_count": max(1, len(ranks)),
+            "traces": ["cuda", "nvtx", "osrt", "mpi"],
+            "output_root": str(Path(job["run_dir"]) / "profiles"),
+            "require_readable_report": True,
+            "require_stats": True,
+            "require_cuda_activity": True,
+        }
+        return manifest
+
+    def write_profile_success_artifacts(self, manifest, *, empty_report=False, missing_stats=False, missing_cuda=False, missing_nvtx=False, mapping_pass=True, qe_done=True):
+        job = manifest["jobs"][0]
+        metadata = qe_runctl.build_job_metadata(manifest, job)
+        run_dir = Path(job["run_dir"])
+        output_root = Path(job["profiler"]["output_root"])
+        (run_dir / "mapping_raw").mkdir(parents=True, exist_ok=True)
+        output_root.mkdir(parents=True, exist_ok=True)
+        if mapping_pass:
+            self.write_json(run_dir, "mapping_summary.json", {"classification": "PASS"})
+        if qe_done:
+            (run_dir / "qe.out").write_text("Program PWSCF\npw.x\nJOB DONE\n", encoding="utf-8")
+            self.write_json(run_dir, "parsed.json", {"job_done": True})
+        for rank in job["profiler"]["selected_global_ranks"]:
+            host = f"n{rank}"
+            self.write_json(run_dir / "mapping_raw", f"rank_{rank}.json", {"hostname": host})
+            prefix = qe_runctl.profile_report_prefix(manifest["trial_id"], host, rank)
+            report = output_root / f"{prefix}.nsys-rep"
+            report.write_bytes(b"" if empty_report else b"fake report")
+            if not missing_stats:
+                stats = "Process,pw.x\n"
+                stats += "CUDA,1\n" if not missing_cuda else "CUDA,0\n"
+                stats += "NVTX,1\n" if not missing_nvtx else "NVTX,0\n"
+                report.with_suffix(".stats.csv").write_text(stats, encoding="utf-8")
+        return metadata
+
     def test_legacy_1node_manifest_and_render_compatible(self):
         with tempfile.TemporaryDirectory() as tmp:
             run_dir = Path(tmp) / "legacy_run"
@@ -289,6 +331,47 @@ class QERunCtlTests(unittest.TestCase):
         self.assertIn("launcher_matched_rank_wrapper=true", script)
         self.assertIn("HIPAC_EXPECTED_RANKS_PER_NODE=4", script)
         self.assertNotRegex(script, r"\bsrun\b.*mapping")
+
+    def test_per_rank_profiler_render_uses_mpirun_wrapper_not_outer_nsys(self):
+        manifest = self.add_profiler(self.manifest_v2("qe", gpus_per_node=2, npools=1), ranks=[0, 3])
+        self.assert_valid(manifest)
+        script = qe_runctl.render_job_script(manifest["jobs"][0], manifest=manifest)
+        self.assertIn("mpirun --bind-to none -np 4 --map-by ppr:2:node \"$RANK_WRAPPER_BIN\" > qe.out", script)
+        self.assertNotRegex(script, r"nsys\s+profile.*mpirun")
+        self.assertIn("HIPAC_PROFILE_ROUTE=per_rank", script)
+        self.assertIn("HIPAC_PROFILE_SELECTED_GLOBAL_RANKS=0,3", script)
+        wrapper = (REPO_ROOT / "scripts" / "qe_rank_wrapper.cu").read_text(encoding="utf-8")
+        self.assertIn("wait_for_global_result(state_dir", wrapper)
+        self.assertLess(wrapper.index("wait_for_global_result(state_dir"), wrapper.index("rank_selected_for_profile(rank)"))
+        self.assertIn('exec_args[n++] = (char *)"profile";', wrapper)
+        self.assertIn("execv(qe_bin, exec_args)", wrapper)
+        self.assertIn("profiler report overwrite refused", wrapper)
+
+    def test_profiler_manifest_schema_rejects_invalid_routes_and_ranks(self):
+        cases = []
+        m = self.add_profiler(self.manifest_v2("qe"), ranks=[]); cases.append(("enabled-no-ranks", m))
+        m = self.add_profiler(self.manifest_v2("qe"), ranks=[0, 1, 2, 3, 4]); cases.append(("too-many", m))
+        m = self.add_profiler(self.manifest_v2("qe"), ranks=[0, 0]); cases.append(("duplicate", m))
+        m = self.add_profiler(self.manifest_v2("qe"), ranks=[2]); cases.append(("outside", m))
+        m = self.add_profiler(self.manifest_v2("qe")); m["jobs"][0]["profiler"]["route"] = "outer_mpirun"; cases.append(("outer", m))
+        m = self.add_profiler(self.manifest_v2("qe")); m["jobs"][0]["profiler"]["output_root"] = str(self.run_root.parent / "evil"); cases.append(("outside-root", m))
+        m = self.add_profiler(self.manifest_v2("qe"), enabled=False, required=True); cases.append(("required-disabled", m))
+        m = self.add_profiler(self.manifest_v2("qe")); m["jobs"][0]["profiler"]["traces"] = ["cuda", "shell"]; cases.append(("trace-injection", m))
+        for name, manifest in cases:
+            with self.subTest(name=name):
+                self.assert_invalid(manifest)
+
+    def test_profiler_recovery_cannot_remove_or_weaken_required_profile(self):
+        manifest = self.add_profiler(self.manifest_v2("qe"))
+        before = manifest["jobs"][0]
+        after = clone(before)
+        after.pop("profiler")
+        with self.assertRaises(qe_runctl.RunCtlError):
+            qe_runctl.validate_profiler_recovery_invariants(before, after)
+        after = clone(before)
+        after["profiler"]["enabled"] = False
+        with self.assertRaises(qe_runctl.RunCtlError):
+            qe_runctl.validate_profiler_recovery_invariants(before, after)
 
     def test_render_expands_environment_identity_paths_for_runtime_shell(self):
         manifest = self.manifest_v2("qe", gpus_per_node=1, npools=1)
@@ -546,6 +629,52 @@ class QERunCtlTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(qe_mapping_validator.MappingValidationError):
                 qe_mapping_validator.wait_for_records(Path(tmp), expected_ranks=1, timeout_seconds=0)
+
+    def test_profiler_acceptance_json_positive_and_negative_matrix(self):
+        manifest = self.add_profiler(self.manifest_v2("qe", gpus_per_node=2, npools=1), ranks=[0, 3])
+        metadata = self.write_profile_success_artifacts(manifest)
+        result = qe_runctl.profile_acceptance_from_metadata(metadata, generate_stats=False)
+        self.assertTrue(result["acceptance"])
+        self.assertEqual(result["expected_report_count"], 2)
+        self.assertEqual(result["observed_report_count"], 2)
+        for key in ("reports_nonempty", "reports_readable", "stats_generated", "pw_process_observed", "cuda_activity_observed", "nvtx_activity_observed", "mapping_pass", "qe_job_done"):
+            self.assertTrue(result[key], key)
+        self.assertEqual(len(result["reports"]), 2)
+        self.assertTrue(all(record["sha256"] for record in result["reports"]))
+
+        negative_cases = {
+            "missing-report": {},
+            "empty-report": {"empty_report": True},
+            "unreadable-report": {},
+            "missing-stats": {"missing_stats": True},
+            "missing-cuda": {"missing_cuda": True},
+            "missing-nvtx": {"missing_nvtx": True},
+            "missing-mapping-pass": {"mapping_pass": False},
+            "missing-qe-done": {"qe_done": False},
+        }
+        for name, kwargs in negative_cases.items():
+            with self.subTest(name=name):
+                m = self.add_profiler(self.manifest_v2("qe", gpus_per_node=2, npools=1, run_dir=str(self.run_root / name)), ranks=[0])
+                md = self.write_profile_success_artifacts(m, **kwargs)
+                if name == "missing-report":
+                    for report in Path(m["jobs"][0]["profiler"]["output_root"]).glob("*.nsys-rep"):
+                        report.unlink()
+                if name == "unreadable-report":
+                    for report in Path(m["jobs"][0]["profiler"]["output_root"]).glob("*.nsys-rep"):
+                        report.unlink()
+                        report.mkdir()
+                out = qe_runctl.profile_acceptance_from_metadata(md, generate_stats=False)
+                self.assertFalse(out["acceptance"])
+
+    def test_bare_g1p_job_cannot_satisfy_profiler_required_stage(self):
+        manifest = self.manifest_v2("qe", run_dir=str(self.run_root / "bare_g1p"))
+        metadata = qe_runctl.build_job_metadata(manifest, manifest["jobs"][0])
+        run_dir = Path(manifest["jobs"][0]["run_dir"])
+        run_dir.mkdir(parents=True)
+        (run_dir / "qe.out").write_text("JOB DONE\n", encoding="utf-8")
+        result = qe_runctl.profile_acceptance_from_metadata(metadata, generate_stats=False)
+        self.assertFalse(result["profiler_required"])
+        self.assertFalse(result["acceptance"])
 
         with tempfile.TemporaryDirectory() as tmp:
             manifest, manifest_path, registry = self.render_submit_ready_qe(tmp)
@@ -891,6 +1020,32 @@ class QERunCtlTests(unittest.TestCase):
                     expected_value=100,
                     new_value=5,
                 )
+
+    def test_evidence_bundle_uses_relative_sha256sums_and_excludes_residue(self):
+        root = self.temp_root / "control_center" / "chatE_auto_review" / "bundle_root"
+        root.mkdir(parents=True)
+        (root / "final_report.md").write_text("ok\n", encoding="utf-8")
+        (root / "nested").mkdir()
+        (root / "nested" / "stats.csv").write_text("CUDA,1\n", encoding="utf-8")
+        (root / "write_test.txt").write_text("residue\n", encoding="utf-8")
+        (root / "raw.nsys-rep").write_bytes(b"large raw")
+        out = self.temp_root / "control_center" / "chatE_auto_review.tgz"
+        with mock.patch.object(qe_runctl, "approved_local_root", return_value=self.temp_root):
+            result = qe_runctl.package_evidence_root(root, out)
+        self.assertTrue(result["sha256sums_relative_to_bundle_root"])
+        with tempfile.TemporaryDirectory() as tmp:
+            import tarfile
+            import subprocess
+            with tarfile.open(out, "r:gz") as tf:
+                tf.extractall(tmp)
+            extracted = Path(tmp) / root.name
+            sums = (extracted / "SHA256SUMS").read_text(encoding="utf-8")
+            self.assertIn("  final_report.md\n", sums)
+            self.assertNotIn(str(root), sums)
+            self.assertNotIn("write_test.txt", sums)
+            self.assertNotIn("raw.nsys-rep", sums)
+            check = subprocess.run(["sha256sum", "-c", "SHA256SUMS"], cwd=extracted, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self.assertEqual(check.returncode, 0, check.stdout + check.stderr)
 
 
 def subprocess_result(returncode, stdout, stderr):

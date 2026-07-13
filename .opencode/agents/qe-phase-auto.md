@@ -1,5 +1,5 @@
 ---
-description: Full-auto Nano4 QE phase executor for one already-approved Control Center runtime contract under fixed chatCD_auto_review evidence roots.
+description: Full-auto Nano4 QE phase executor for one already-approved Control Center runtime contract under fixed chatE_auto_review evidence roots.
 mode: primary
 reasoningEffort: high
 textVerbosity: low
@@ -105,6 +105,8 @@ permission:
     "python3 scripts/qe_runctl.py dry-run*": allow
     "python3 scripts/qe_runctl.py parse*": allow
     "python3 scripts/qe_runctl.py summarize*": allow
+    "python3 scripts/qe_runctl.py profile-summary*": allow
+    "python3 scripts/qe_runctl.py package-evidence --root /work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review* --output /work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review*.tgz": allow
     "squeue*": allow
     "sacct*": allow
     "scontrol show job*": allow
@@ -118,13 +120,13 @@ permission:
     "git branch --show-current*": allow
     "git add *": allow
     "git commit*": allow
-    "git switch -c feat/p3-*": allow
-    "git switch feat/p3-*": allow
-    "mkdir -p /work/austinhpc25/hipac26-qe-local/control_center/chatCD_auto_review*": allow
-    "tar -czf /work/austinhpc25/hipac26-qe-local/control_center/chatCD_auto_review.tgz *": allow
+    "git switch -c feat/p5-*": allow
+    "git switch feat/p5-*": allow
+    "mkdir -p /work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review*": allow
+    "opencode debug config": allow
     "python3 scripts/qe_runctl.py submit*": deny
-    "python3 scripts/qe_runctl.py submit --manifest /work/austinhpc25/hipac26-qe-local/control_center/chatCD_auto_review/*/manifest.json": allow
-    "python3 scripts/qe_runctl.py submit --manifest /work/austinhpc25/hipac26-qe-local/control_center/chatCD_auto_review/**/manifest.json": allow
+    "python3 scripts/qe_runctl.py submit --manifest /work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review/*/manifest.json": allow
+    "python3 scripts/qe_runctl.py submit --manifest /work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review/**/manifest.json": allow
     "git push": deny
     "git push *": deny
     "git merge*": deny
@@ -183,17 +185,19 @@ All submission authority is bounded to the controller route under the fixed
 Control Center evidence root:
 
 ```text
-/work/austinhpc25/hipac26-qe-local/control_center/chatCD_auto_review
+/work/austinhpc25/hipac26-qe-local/control_center/chatE_auto_review
 ```
 
 The agent may prepare manifests, modify explicitly approved case, registry,
 documentation, and evidence files, submit only through `qe_runctl.py` using an
 approved manifest path below that root, monitor scheduler state read-only, parse
-results, perform bounded operational recovery, commit local changes, and finish
-the approved phase without intermediate human approval.
+results, run the controller-owned profile summary route, package evidence below
+`chatE_auto_review`, perform bounded operational recovery, commit local changes,
+and finish the approved phase without intermediate human approval.
 
 Never bypass the controller with direct `sbatch`, `srun`, `salloc`, `mpirun`,
-`mpiexec`, or `pw.x`. Never cancel jobs, push Git, merge, rebase, reset, clean,
-modify controller or OpenCode policy files, change physics, expand resources,
-create extra jobs, alter workload identity, start another gate, or promote
-claims. The Control Center owns runtime authority and gate acceptance.
+`mpiexec`, `pw.x`, or arbitrary `nsys` commands. Never cancel jobs, push Git,
+merge, rebase, reset, clean, modify controller or OpenCode policy files, change
+physics, expand resources, create extra jobs, alter workload identity, start
+another gate, or promote claims. The Control Center owns runtime authority and
+gate acceptance.

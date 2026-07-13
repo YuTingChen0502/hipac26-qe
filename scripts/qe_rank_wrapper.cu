@@ -158,6 +158,63 @@ static void write_exec_marker(const char *state_dir, int rank) {
     }
 }
 
+static int rank_selected_for_profile(int rank) {
+    const char *enabled = getenv("HIPAC_PROFILE_ENABLED");
+    if (enabled == NULL || strcmp(enabled, "1") != 0) return 0;
+    const char *route = getenv("HIPAC_PROFILE_ROUTE");
+    if (route == NULL || strcmp(route, "per_rank") != 0) die("invalid profiler route");
+    const char *selected = getenv("HIPAC_PROFILE_SELECTED_GLOBAL_RANKS");
+    if (selected == NULL || selected[0] == '\0') die("profiler enabled without selected ranks");
+    char copy[1024];
+    snprintf(copy, sizeof(copy), "%s", selected);
+    char *save = NULL;
+    for (char *tok = strtok_r(copy, ",", &save); tok != NULL; tok = strtok_r(NULL, ",", &save)) {
+        if (atoi(tok) == rank) return 1;
+    }
+    return 0;
+}
+
+static void safe_component(const char *input, char *out, size_t out_size) {
+    size_t j = 0;
+    if (out_size == 0) return;
+    for (size_t i = 0; input != NULL && input[i] != '\0' && j + 1 < out_size; ++i) {
+        char c = input[i];
+        if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9') || c == '_' || c == '.' || c == '-') {
+            out[j++] = c;
+        } else {
+            out[j++] = '_';
+        }
+    }
+    if (j == 0) {
+        snprintf(out, out_size, "unknown");
+    } else {
+        out[j] = '\0';
+    }
+}
+
+static int file_exists_path(const char *path) {
+    return access(path, F_OK) == 0;
+}
+
+static int append_qe_args(char **exec_args, int n, int max_args, const char *qe_bin, const char *npools, const char *qe_input, char **extra_copy_out) {
+    exec_args[n++] = (char *)qe_bin;
+    exec_args[n++] = (char *)"-nk";
+    exec_args[n++] = (char *)npools;
+    const char *extra = getenv("HIPAC_QE_EXTRA_ARGS");
+    *extra_copy_out = NULL;
+    if (extra != NULL && extra[0] != '\0') {
+        *extra_copy_out = strdup(extra);
+        char *save = NULL;
+        for (char *tok = strtok_r(*extra_copy_out, " ", &save); tok != NULL && n < max_args - 4; tok = strtok_r(NULL, " ", &save)) {
+            exec_args[n++] = tok;
+        }
+    }
+    exec_args[n++] = (char *)"-in";
+    exec_args[n++] = (char *)qe_input;
+    exec_args[n] = NULL;
+    return n;
+}
+
 int main(int argc, char **argv) {
     (void)argc;
     (void)argv;
@@ -229,22 +286,44 @@ int main(int argc, char **argv) {
     wait_for_global_result(state_dir, timeout_seconds + 5);
     write_exec_marker(state_dir, rank);
 
-    const char *extra = getenv("HIPAC_QE_EXTRA_ARGS");
     char *exec_args[128];
     int n = 0;
-    exec_args[n++] = (char *)qe_bin;
-    exec_args[n++] = (char *)"-nk";
-    exec_args[n++] = (char *)npools;
-    if (extra != NULL && extra[0] != '\0') {
-        char *copy = strdup(extra);
-        char *save = NULL;
-        for (char *tok = strtok_r(copy, " ", &save); tok != NULL && n < 124; tok = strtok_r(NULL, " ", &save)) {
-            exec_args[n++] = tok;
+    char *extra_copy = NULL;
+    if (rank_selected_for_profile(rank)) {
+        const char *nsys_bin = need_env("HIPAC_NSYS_BIN");
+        const char *output_root = need_env("HIPAC_PROFILE_OUTPUT_ROOT");
+        const char *trace = need_env("HIPAC_PROFILE_TRACE");
+        const char *trial_id = need_env("HIPAC_PROFILE_TRIAL_ID");
+        char safe_trial[256];
+        char safe_host[256];
+        safe_component(trial_id, safe_trial, sizeof(safe_trial));
+        safe_component(host, safe_host, sizeof(safe_host));
+        char prefix[PATH_MAX];
+        snprintf(prefix, sizeof(prefix), "%s/%s_%s_rank%d", output_root, safe_trial, safe_host, rank);
+        char rep_path[PATH_MAX];
+        char sqlite_path[PATH_MAX];
+        char qdstrm_path[PATH_MAX];
+        snprintf(rep_path, sizeof(rep_path), "%s.nsys-rep", prefix);
+        snprintf(sqlite_path, sizeof(sqlite_path), "%s.sqlite", prefix);
+        snprintf(qdstrm_path, sizeof(qdstrm_path), "%s.qdstrm", prefix);
+        if (file_exists_path(rep_path) || file_exists_path(sqlite_path) || file_exists_path(qdstrm_path)) {
+            die("profiler report overwrite refused");
         }
+        char trace_arg[256];
+        snprintf(trace_arg, sizeof(trace_arg), "--trace=%s", trace);
+        exec_args[n++] = (char *)nsys_bin;
+        exec_args[n++] = (char *)"profile";
+        exec_args[n++] = (char *)"--force-overwrite=false";
+        exec_args[n++] = trace_arg;
+        exec_args[n++] = (char *)"--sample=none";
+        exec_args[n++] = (char *)"--output";
+        exec_args[n++] = prefix;
+        append_qe_args(exec_args, n, 128, qe_bin, npools, qe_input, &extra_copy);
+        execv(nsys_bin, exec_args);
+        perror("execv nsys profile");
+        return 61;
     }
-    exec_args[n++] = (char *)"-in";
-    exec_args[n++] = (char *)qe_input;
-    exec_args[n] = NULL;
+    append_qe_args(exec_args, n, 128, qe_bin, npools, qe_input, &extra_copy);
     execv(qe_bin, exec_args);
     perror("execv pw.x");
     return 60;
