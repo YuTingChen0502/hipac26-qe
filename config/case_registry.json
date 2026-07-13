@@ -167,7 +167,8 @@
       "blocked_reason": null,
       "notes": "Canonical TypeA maxstep100 full-convergence diagnostic input. Not a benchmark and no performance or optimization claim is allowed.",
       "allowed_npools": [
-        1
+        1,
+        7
       ],
       "benchmark_valid": false,
       "performance_claim_allowed": false,
@@ -177,6 +178,11 @@
           "path": "/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x",
           "sha256": "d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543",
           "identity_status": "verified_read_only_g1_production"
+        },
+        "g1p_profiling_only": {
+          "path": "/work/$USER/hipac26-qe-builds/G1p-qe75-nvhpc259-gpu-nvtx/install/bin/pw.x",
+          "sha256": "e93f7a9b9a7e8ab963ef20a530a5731d7569bd7d53a7ed9bcf42115e53a91b44",
+          "identity_status": "verified_read_only_g1p_profiling_only"
         }
       }
     },
