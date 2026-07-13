@@ -33,7 +33,8 @@
       "separate_workload": false,
       "qe_submit_eligible": true,
       "approved_runtime_roles": [
-        "two_node_readiness_diagnostic"
+        "two_node_readiness_diagnostic",
+        "conditional_kpool_diagnostic"
       ],
       "input": {
         "path": "/work/$USER/hipac26-qe-cases/typeA-au111-manyk-emax5/pw.in",
@@ -52,7 +53,8 @@
       "blocked_reason": null,
       "notes": "Immutable derived readiness diagnostic only; source TypeA maxstep100 input remains unchanged. Not a benchmark, not TypeA-nosym, not official-scale, and no performance or optimization claim is allowed.",
       "allowed_npools": [
-        1
+        1,
+        7
       ],
       "benchmark_valid": false,
       "performance_claim_allowed": false,
@@ -87,50 +89,96 @@
       "display_name": "TypeA Au(111) many-k emax20",
       "case_family": "typeA-au111-manyk",
       "role": "longer_stabilization",
-      "lifecycle": "planned",
+      "lifecycle": "verified",
       "selected": false,
       "separate_workload": false,
-      "qe_submit_eligible": false,
+      "qe_submit_eligible": true,
       "approved_runtime_roles": [
-        "longer_stabilization"
+        "longer_stabilization",
+        "conditional_kpool_diagnostic"
       ],
       "input": {
-        "path": null,
-        "sha256": null,
-        "identity_status": "not_frozen"
+        "path": "/work/$USER/hipac26-qe-cases/typeA-au111-manyk-emax20/pw.in",
+        "sha256": "edb574793ad58cf0dea281a72c1d75f3198c4e6b693a5c991f9492e91d79a3db",
+        "identity_status": "verified"
       },
       "pseudos": {
-        "files": [],
-        "sha256": {},
-        "identity_status": "not_frozen"
+        "files": [
+          "/work/$USER/hipac26-qe-pseudos/Au.pbe-nd-van.UPF"
+        ],
+        "sha256": {
+          "/work/$USER/hipac26-qe-pseudos/Au.pbe-nd-van.UPF": "f3ddf87a320e0fa57066628284f30f300dc6a4eadbc1a81c8b9b88eaa4780ab9"
+        },
+        "identity_status": "verified"
       },
       "blocked_reason": null,
-      "notes": "Planned only; no canonical input or pseudo identity is frozen."
+      "notes": "Immutable derived TypeA diagnostic; only electron_maxstep differs from canonical maxstep100 input (100 -> 20). Not a benchmark and no performance or optimization claim is allowed.",
+      "allowed_npools": [
+        1,
+        7
+      ],
+      "benchmark_valid": false,
+      "performance_claim_allowed": false,
+      "optimization_claim_allowed": false,
+      "runtime_binaries": {
+        "g1_production": {
+          "path": "/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x",
+          "sha256": "d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543",
+          "identity_status": "verified_read_only_g1_production"
+        }
+      },
+      "source_lineage": {
+        "source_case_id": "typeA-au111-manyk-full",
+        "source_path": "/work/$USER/hipac26-qe-cases/typeA-au111-manyk/pw.in",
+        "source_sha256": "7c9354016502431300025747b73aebe9ae2b3a6766c811fe0bf0e8a8066b03d2",
+        "only_physics_change": "electron_maxstep 100 -> 20"
+      },
+      "transformation_evidence": {
+        "record_path": "/work/$USER/hipac26-qe-local/control_center/chatCD_auto_review/chatD/case_derivations/emax20_derivation.json",
+        "diff_path": "/work/$USER/hipac26-qe-local/control_center/chatCD_auto_review/chatD/case_derivations/emax20.diff"
+      }
     },
     {
       "case_id": "typeA-au111-manyk-full",
       "display_name": "TypeA Au(111) many-k normal/full maxstep",
       "case_family": "typeA-au111-manyk",
       "role": "longer_full_convergence",
-      "lifecycle": "planned",
+      "lifecycle": "verified",
       "selected": false,
       "separate_workload": false,
-      "qe_submit_eligible": false,
+      "qe_submit_eligible": true,
       "approved_runtime_roles": [
         "longer_full_convergence"
       ],
       "input": {
-        "path": null,
-        "sha256": null,
-        "identity_status": "not_frozen"
+        "path": "/work/$USER/hipac26-qe-cases/typeA-au111-manyk/pw.in",
+        "sha256": "7c9354016502431300025747b73aebe9ae2b3a6766c811fe0bf0e8a8066b03d2",
+        "identity_status": "verified"
       },
       "pseudos": {
-        "files": [],
-        "sha256": {},
-        "identity_status": "not_frozen"
+        "files": [
+          "/work/$USER/hipac26-qe-pseudos/Au.pbe-nd-van.UPF"
+        ],
+        "sha256": {
+          "/work/$USER/hipac26-qe-pseudos/Au.pbe-nd-van.UPF": "f3ddf87a320e0fa57066628284f30f300dc6a4eadbc1a81c8b9b88eaa4780ab9"
+        },
+        "identity_status": "verified"
       },
       "blocked_reason": null,
-      "notes": "Normal/full electron_maxstep workload remains planned."
+      "notes": "Canonical TypeA maxstep100 full-convergence diagnostic input. Not a benchmark and no performance or optimization claim is allowed.",
+      "allowed_npools": [
+        1
+      ],
+      "benchmark_valid": false,
+      "performance_claim_allowed": false,
+      "optimization_claim_allowed": false,
+      "runtime_binaries": {
+        "g1_production": {
+          "path": "/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x",
+          "sha256": "d2b0d6221e4a1d18dfdb6407baad3f428c52a3e8e3c2dde8bd301827f3c66543",
+          "identity_status": "verified_read_only_g1_production"
+        }
+      }
     },
     {
       "case_id": "typeA-au111-manyk-nosym",
