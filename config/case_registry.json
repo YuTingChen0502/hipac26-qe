@@ -256,6 +256,204 @@
       },
       "blocked_reason": "no_frozen_official_input",
       "notes": "No official or approved representative-scale input has been frozen. No official benchmark claim is permitted."
+    },
+    {
+      "case_id": "typeB-si512-gamma",
+      "display_name": "TypeB Si512 Gamma",
+      "case_family": "typeB-si-gamma",
+      "role": "two_node_typical_profiling",
+      "lifecycle": "verified",
+      "selected": false,
+      "separate_workload": true,
+      "qe_submit_eligible": true,
+      "approved_runtime_roles": [
+        "two_node_typical_profiling"
+      ],
+      "input": {
+        "path": "/work/austinhpc25/hipac26-qe-cases/typeB-si512-gamma/pw.in",
+        "sha256": "e4eff2fd6c30caf0b29bc15bb3304926f22f4f055ea85ffb06f38c74e5c5df40",
+        "identity_status": "verified"
+      },
+      "pseudos": {
+        "files": [
+          "/work/austinhpc25/hipac26-qe-pseudos/pslibrary-1.0.0/Si.pbe-n-rrkjus_psl.1.0.0.UPF"
+        ],
+        "sha256": {
+          "/work/austinhpc25/hipac26-qe-pseudos/pslibrary-1.0.0/Si.pbe-n-rrkjus_psl.1.0.0.UPF": "669fb75395a9d26973b0ea1ce8223bbcb30d3396c5d48bf5e794d1243c52375a"
+        },
+        "identity_status": "verified"
+      },
+      "blocked_reason": null,
+      "notes": "Verified local TypeB Gamma candidate. Registered as an eligible secondary representative; campaign inclusion must be explicit."
+    },
+    {
+      "case_id": "typeB-si1000-gamma",
+      "display_name": "TypeB Si1000 Gamma",
+      "case_family": "typeB-si-gamma",
+      "role": "two_node_typical_profiling",
+      "lifecycle": "verified",
+      "selected": true,
+      "separate_workload": true,
+      "qe_submit_eligible": true,
+      "approved_runtime_roles": [
+        "two_node_typical_profiling"
+      ],
+      "input": {
+        "path": "/work/austinhpc25/hipac26-qe-cases/typeB-si1000-gamma/pw.in",
+        "sha256": "3efd3830a380a185e76124e8d7beba2111ea6c1333d8e946bbac199c1c06a340",
+        "identity_status": "verified"
+      },
+      "pseudos": {
+        "files": [
+          "/work/austinhpc25/hipac26-qe-pseudos/pslibrary-1.0.0/Si.pbe-n-rrkjus_psl.1.0.0.UPF"
+        ],
+        "sha256": {
+          "/work/austinhpc25/hipac26-qe-pseudos/pslibrary-1.0.0/Si.pbe-n-rrkjus_psl.1.0.0.UPF": "669fb75395a9d26973b0ea1ce8223bbcb30d3396c5d48bf5e794d1243c52375a"
+        },
+        "identity_status": "verified"
+      },
+      "blocked_reason": null,
+      "notes": "Verified local TypeB Gamma candidate. Selected as the default TypeB representative; this does not establish benchmark validity."
+    },
+    {
+      "case_id": "typeC-grir686",
+      "display_name": "TypeC GRIR686",
+      "case_family": "typeC-high-electron-band-candidate",
+      "role": "two_node_typical_profiling",
+      "lifecycle": "verified",
+      "selected": true,
+      "separate_workload": true,
+      "qe_submit_eligible": true,
+      "approved_runtime_roles": [
+        "two_node_typical_profiling"
+      ],
+      "input": {
+        "path": "/work/austinhpc25/hipac26-qe-cases/typeC-grir686/pw.in",
+        "sha256": "cc978c58d9ea7f569fc0925b6c8a167968daac7e3964d6724677ec473b8396e4",
+        "identity_status": "verified"
+      },
+      "pseudos": {
+        "files": [
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/GRIR686/C.pbe-paw_kj-x.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/GRIR686/Ir.pbe-paw_kj.UPF"
+        ],
+        "sha256": {
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/GRIR686/C.pbe-paw_kj-x.UPF": "a6a5c4957decb1db6334228e125b25d91e315142546898fc6211a29dad961012",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/GRIR686/Ir.pbe-paw_kj.UPF": "6ae4787f56f6c0c64b32821249b8859db06551436445f37136614cc62d93366d"
+        },
+        "identity_status": "verified"
+      },
+      "blocked_reason": null,
+      "notes": "QEF/benchmarks GRIR686 source at fixed upstream commit. Workload-family classification remains a profiling hypothesis until runtime timer evidence is collected."
+    },
+    {
+      "case_id": "typeD-cnt10por8",
+      "display_name": "TypeD CNT10POR8",
+      "case_family": "typeD-large-cell-gamma",
+      "role": "two_node_typical_profiling",
+      "lifecycle": "verified",
+      "selected": true,
+      "separate_workload": true,
+      "qe_submit_eligible": true,
+      "approved_runtime_roles": [
+        "two_node_typical_profiling"
+      ],
+      "input": {
+        "path": "/work/austinhpc25/hipac26-qe-cases/typeD-cnt10por8/pw.in",
+        "sha256": "c5fb2257e0a19664578a2186a7ef7f4874274d144bf2faf519ac77bacf04e7b9",
+        "identity_status": "verified"
+      },
+      "pseudos": {
+        "files": [
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/CNT10POR8/C.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/CNT10POR8/O.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/CNT10POR8/N.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/CNT10POR8/H.pbe-van_bm.UPF"
+        ],
+        "sha256": {
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/CNT10POR8/C.pbe-van_bm.UPF": "df32edce22ff1d9bfe906cc9259d5240fcbab1a4b77e09dd95a5a9c5a7c753c0",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/CNT10POR8/O.pbe-van_bm.UPF": "de7469292127b7d56e6174488b0f0ea5164ddca2a90026d558b2a60ed2847efd",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/CNT10POR8/N.pbe-van_bm.UPF": "f22302e34b1fbc63e90a816f972970791eff54465c51b9c864511252d0ce0e08",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/CNT10POR8/H.pbe-van_bm.UPF": "5089dd31d7c98ac8d95a6a106092c6a629329377cc3cdd8f97ae95df05b3788d"
+        },
+        "identity_status": "verified"
+      },
+      "blocked_reason": null,
+      "notes": "QEF/benchmarks CNT10POR8 source at fixed upstream commit. Large-cell/Gamma workload candidate; no bottleneck claim yet."
+    },
+    {
+      "case_id": "typeE-psiwat",
+      "display_name": "TypeE PSIWAT",
+      "case_family": "typeE-memory-pressure-candidate",
+      "role": "two_node_typical_profiling",
+      "lifecycle": "verified",
+      "selected": true,
+      "separate_workload": true,
+      "qe_submit_eligible": true,
+      "approved_runtime_roles": [
+        "two_node_typical_profiling"
+      ],
+      "input": {
+        "path": "/work/austinhpc25/hipac26-qe-cases/typeE-psiwat/pw.in",
+        "sha256": "5a1180c1a8a4be803cd1b713e193d096235eeb684fb46fc704f9ecad11bffeba",
+        "identity_status": "verified"
+      },
+      "pseudos": {
+        "files": [
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/Au.pbe-van_ak.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/O.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/C.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/N.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/H.pbe-van_bm.UPF"
+        ],
+        "sha256": {
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/Au.pbe-van_ak.UPF": "1ba30c1f70009c0a2f375fffbe1649c1f7b94fe9a7b1d27f5172d750054f06e0",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/O.pbe-van_bm.UPF": "d4b72a1502183a50d1ab127a881a9437906d42e651a4f5361fe79b75764e015c",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/C.pbe-van_bm.UPF": "c7f1eb6c3e819a363e2d912a420a88ca4afe6084fc236b4c18c7ad58ac327f24",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/N.pbe-van_bm.UPF": "32977f9631a758784314b1c75076d5c51d92b557b1bcc159c02692797e362e55",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/H.pbe-van_bm.UPF": "b038c4a241bb464577e8aa792ba214fdd499726494487b77943e0c528e0200d8"
+        },
+        "identity_status": "verified"
+      },
+      "blocked_reason": null,
+      "notes": "QEF/benchmarks PSIWAT source at fixed upstream commit. Memory-pressure classification is provisional until measured."
+    },
+    {
+      "case_id": "typeF-psiwat-relax-derived",
+      "display_name": "TypeF PSIWAT one-step relax derived",
+      "case_family": "typeF-relax-workflow-derived",
+      "role": "two_node_typical_profiling",
+      "lifecycle": "verified",
+      "selected": true,
+      "separate_workload": true,
+      "qe_submit_eligible": true,
+      "approved_runtime_roles": [
+        "two_node_typical_profiling"
+      ],
+      "input": {
+        "path": "/work/austinhpc25/hipac26-qe-cases/typeF-psiwat-relax-derived/pw.in",
+        "sha256": "1165333b0b5932130766ab8ae76185d44a2d60adeb1be1e56dfc8e2607813ec8",
+        "identity_status": "verified"
+      },
+      "pseudos": {
+        "files": [
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/Au.pbe-van_ak.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/O.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/C.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/N.pbe-van_bm.UPF",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/H.pbe-van_bm.UPF"
+        ],
+        "sha256": {
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/Au.pbe-van_ak.UPF": "1ba30c1f70009c0a2f375fffbe1649c1f7b94fe9a7b1d27f5172d750054f06e0",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/O.pbe-van_bm.UPF": "d4b72a1502183a50d1ab127a881a9437906d42e651a4f5361fe79b75764e015c",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/C.pbe-van_bm.UPF": "c7f1eb6c3e819a363e2d912a420a88ca4afe6084fc236b4c18c7ad58ac327f24",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/N.pbe-van_bm.UPF": "32977f9631a758784314b1c75076d5c51d92b557b1bcc159c02692797e362e55",
+          "/work/austinhpc25/hipac26-qe-pseudos/qef-benchmarks-eff15189e7b1120f5facc6fef202cbd6ff0ed26b/PSIWAT/H.pbe-van_bm.UPF": "b038c4a241bb464577e8aa792ba214fdd499726494487b77943e0c528e0200d8"
+        },
+        "identity_status": "verified"
+      },
+      "blocked_reason": null,
+      "notes": "Controlled one-step relax derivation from PSIWAT. DERIVATION.diff and provenance.md are mandatory evidence. Profiling-only; benchmark_valid remains false."
     }
   ]
 }
