@@ -15,7 +15,6 @@ permission:
 
   skill:
     "*": deny
-    "qe-nano4-automation": allow
     "qe-nano4-bounded-phase-executor": allow
 
   external_directory:
@@ -151,9 +150,8 @@ permission:
     "rm -r *": deny
 ---
 
-Before any work, load and obey both skills:
+Before any work, load and obey the required skill:
 
-- qe-nano4-automation
 - qe-nano4-bounded-phase-executor
 
 Execute exactly one Control Center-approved campaign contract. The campaign
