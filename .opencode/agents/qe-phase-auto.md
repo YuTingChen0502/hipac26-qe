@@ -89,6 +89,7 @@ permission:
     "python3 scripts/qe_runctl.py summarize*": allow
     "python3 scripts/qe_runctl.py profile-summary*": allow
     "bash /work/austinhpc25/hipac26-qe-local/bin/qe_submit_with_temp_enable.sh *": allow
+    "bash /work/austinhpc25/hipac26-qe-local/bin/qe_cleanup_wavefunction_scratch.sh *": allow
     "python3 /work/austinhpc25/hipac26-qe-local/bin/qe_evidence_write.py *": allow
 
     "squeue": allow
