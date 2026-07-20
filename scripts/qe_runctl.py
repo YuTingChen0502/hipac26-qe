@@ -29,6 +29,8 @@ import time
 from pathlib import Path
 from typing import Any
 
+from qe_convergence import classify_qe_convergence
+
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CONFIG = REPO_ROOT / "config" / "nano4.json"
@@ -2758,7 +2760,10 @@ def cmd_submit(args: argparse.Namespace) -> int:
     return 0
 
 
-def parse_qe_output(path: Path) -> dict[str, Any]:
+def parse_qe_output(
+    path: Path,
+    input_path: Any = None,
+) -> dict[str, Any]:
     text = path.read_text(encoding="utf-8", errors="replace")
     energy_matches = re.findall(
         r"^\s*!?\s*total energy\s+=\s+(-?\d+\.\d+)\s+Ry",
@@ -2771,7 +2776,10 @@ def parse_qe_output(path: Path) -> dict[str, Any]:
         re.IGNORECASE,
     )
     iteration_count = len(re.findall(r"^\s*iteration\s+#", text, re.MULTILINE))
-    converged = "convergence has been achieved" in text.lower()
+    convergence = classify_qe_convergence(
+        text,
+        input_path,
+    )
     maxstep_stop = "convergence not achieved after" in text.lower()
     job_done = "JOB DONE" in text
 
@@ -2812,7 +2820,9 @@ def parse_qe_output(path: Path) -> dict[str, Any]:
         "qe_output": str(path),
         "benchmark_valid": False,
         "job_done": job_done,
-        "converged": converged,
+        # Compatibility field now means strict numerical convergence.
+        "converged": convergence["strict_scf_converged"],
+        **convergence,
         "maxstep_stop": maxstep_stop,
         "final_energy_ry": float(energy_matches[-1]) if energy_matches else None,
         "total_energy_sequence_ry": [float(value) for value in energy_matches],
@@ -3080,7 +3090,10 @@ def cmd_parse(args: argparse.Namespace) -> int:
             if args.allow_missing:
                 continue
             fail(f"qe.out missing: {qe_out}")
-        parsed = parse_qe_output(qe_out)
+        parsed = parse_qe_output(
+            qe_out,
+            expand_path(job["input_path"]),
+        )
         parsed.update({
             "trial_id": manifest["trial_id"],
             "config_id": job["config_id"],
@@ -3116,7 +3129,13 @@ def cmd_summarize(args: argparse.Namespace) -> int:
             "config_id": job["config_id"],
             "benchmark_valid": False,
             "job_done": parsed.get("job_done"),
-            "converged": parsed.get("converged"),
+            "converged": parsed.get("strict_scf_converged"),
+            "convergence_status": parsed.get("convergence_status"),
+            "strict_scf_converged": parsed.get("strict_scf_converged"),
+            "forced_accept": parsed.get("forced_accept"),
+            "reached_electron_maxstep": parsed.get("reached_electron_maxstep"),
+            "final_scf_accuracy_ry": parsed.get("final_scf_accuracy_ry"),
+            "conv_thr_ry": parsed.get("conv_thr_ry"),
             "final_energy_ry": parsed.get("final_energy_ry"),
             "scf_iterations": parsed.get("scf_iterations"),
             "pwscf_wall_seconds": parsed.get("pwscf_wall_seconds"),

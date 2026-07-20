@@ -7,6 +7,8 @@ import re
 from pathlib import Path
 from typing import Any, Optional
 
+from qe_convergence import classify_qe_convergence
+
 
 def parse_qe_time_to_sec(s: str) -> Optional[float]:
     s = s.strip()
@@ -67,7 +69,11 @@ def classify_failure(text: str, pw_err: str = "") -> Optional[str]:
     return None
 
 
-def parse_qe_output(pw_out: Path, pw_err: Optional[Path] = None) -> dict[str, Any]:
+def parse_qe_output(
+    pw_out: Path,
+    pw_err: Optional[Path] = None,
+    pw_in: Optional[Path] = None,
+) -> dict[str, Any]:
     if not pw_out.exists():
         return {
             "parser_status": "missing",
@@ -111,12 +117,8 @@ def parse_qe_output(pw_out: Path, pw_err: Optional[Path] = None) -> dict[str, An
     if scf_iterations == 0:
         scf_iterations = len(re.findall(r"estimated\s+scf\s+accuracy", text, flags=re.I))
 
-    if re.search(r"convergence\s+has\s+been\s+achieved", text, re.I):
-        convergence_status = "converged"
-    elif re.search(r"convergence\s+NOT\s+achieved|not\s+converged", text, re.I):
-        convergence_status = "not_converged"
-    else:
-        convergence_status = "unknown"
+    convergence = classify_qe_convergence(text, pw_in)
+    convergence_status = convergence["convergence_status"]
 
     number_of_atoms = None
     m = re.search(r"number\s+of\s+atoms/cell\s+=\s+(\d+)", text, re.I)
@@ -164,6 +166,7 @@ def parse_qe_output(pw_out: Path, pw_err: Optional[Path] = None) -> dict[str, An
         "fatal_error_detected": fatal_error_detected,
         "smoke_pass": smoke_pass,
         "failure_class": failure_class,
+        **convergence,
         "convergence_status": convergence_status,
         "total_energy_ry": total_energy_ry,
         "scf_iterations": scf_iterations,
@@ -181,11 +184,16 @@ def main() -> int:
     ap = argparse.ArgumentParser(description="Parse QE pw.x smoke output into parsed.json.")
     ap.add_argument("--pw-out", required=True, type=Path)
     ap.add_argument("--pw-err", type=Path)
+    ap.add_argument("--pw-in", type=Path)
     ap.add_argument("--metadata", type=Path)
     ap.add_argument("--out", required=True, type=Path)
     args = ap.parse_args()
 
-    result = parse_qe_output(args.pw_out, args.pw_err)
+    result = parse_qe_output(
+        args.pw_out,
+        args.pw_err,
+        args.pw_in,
+    )
 
     if args.metadata and args.metadata.exists():
         try:
