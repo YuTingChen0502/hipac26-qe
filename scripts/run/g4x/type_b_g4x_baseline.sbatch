@@ -5,9 +5,6 @@
 #SBATCH --partition=16gpus
 #SBATCH --job-name=type-b-g4x-baseline
 
-# Benchmark placement
-#SBATCH --nodelist=25a-hgpn[002-003]
-
 # Compute resources
 #SBATCH --nodes=2
 #SBATCH --ntasks=16
