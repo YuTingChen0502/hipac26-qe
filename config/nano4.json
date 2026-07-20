@@ -17,7 +17,7 @@
       "archive_sha256": "e3b4de7aea01356cab6d8627fe1c9bf8122eae56df4cd266bfbcbcac1906ab65",
       "internal_sha256sums": "verified"
     },
-    "two_node_qe_submit_enabled": false,
+    "two_node_qe_submit_enabled": true,
     "environment_probe_submit_enabled": false
   },
   "paths": {
