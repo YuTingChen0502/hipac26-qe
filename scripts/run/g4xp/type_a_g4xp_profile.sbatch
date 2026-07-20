@@ -5,12 +5,15 @@
 #SBATCH --partition=16gpus
 #SBATCH --job-name=type-a-g4xp-profile
 
+# Benchmark placement
+#SBATCH --nodelist=25a-hgpn[002-003]
+
 # Compute resources
 #SBATCH --nodes=2
 #SBATCH --ntasks=14
 #SBATCH --ntasks-per-node=7
 #SBATCH --cpus-per-task=12
-#SBATCH --gres=gpu:7
+#SBATCH --gres=gpu:8
 
 # Time and logs
 #SBATCH --time=04:00:00
@@ -63,7 +66,7 @@ export NSYS_EXECUTABLE
     echo "nodes=${SLURM_JOB_NUM_NODES}"
     echo "mpi_ranks=${MPI_RANKS}"
     echo "ranks_per_node=${RANKS_PER_NODE}"
-    echo "gpus_per_node=7"
+    echo "gpus_per_node=8"
     echo "openmp_threads=${OPENMP_THREADS}"
     echo "k_point_pools=${K_POINT_POOLS}"
     echo "profile_ranks=${PROFILE_RANKS}"
