@@ -1,0 +1,109 @@
+#!/usr/bin/env bash
+
+# Job identity
+#SBATCH --account=ACD114087
+#SBATCH --partition=16gpus
+#SBATCH --job-name=type-a-g4x-baseline
+
+# Compute resources
+#SBATCH --nodes=2
+#SBATCH --ntasks=14
+#SBATCH --ntasks-per-node=7
+#SBATCH --cpus-per-task=12
+#SBATCH --gres=gpu:7
+
+# Time and logs
+#SBATCH --time=04:00:00
+#SBATCH --output=/work/%u/hipac26-qe-runs/slurm/%x-%j.out
+#SBATCH --error=/work/%u/hipac26-qe-runs/slurm/%x-%j.err
+
+set -euo pipefail
+umask 027
+
+source "/work/${USER}/hipac26-qe/scripts/env/nvhpc259.sh"
+
+QE_EXECUTABLE="/work/${USER}/hipac26-qe-builds/G4X-qe75-nvhpc259-h200-sm90-noelpa/install/bin/pw.x"
+QE_INPUT_SOURCE="/work/${USER}/hipac26-qe-cases/typeA-au111-manyk/pw.in"
+MPI_RANKS=14
+RANKS_PER_NODE=7
+K_POINT_POOLS=7
+OPENMP_THREADS=12
+
+RUN_DIRECTORY="/work/${USER}/hipac26-qe-runs/g4x-g4xp-runtime/type_a/g4x-${SLURM_JOB_ID}"
+QE_INPUT_COPY="${RUN_DIRECTORY}/pw.in"
+
+test -x "${QE_EXECUTABLE}"
+test -f "${QE_INPUT_SOURCE}"
+test "${SLURM_NTASKS}" -eq "${MPI_RANKS}"
+
+mkdir -p     "${RUN_DIRECTORY}"     "${RUN_DIRECTORY}/out"     "${RUN_DIRECTORY}/rank-mapping"
+
+cp "${QE_INPUT_SOURCE}" "${QE_INPUT_COPY}"
+
+export OMP_NUM_THREADS="${OPENMP_THREADS}"
+export QE_EXECUTABLE
+export QE_INPUT_COPY
+export K_POINT_POOLS
+export RUN_DIRECTORY
+
+{
+    echo "job_id=${SLURM_JOB_ID}"
+    echo "job_name=${SLURM_JOB_NAME}"
+    echo "binary=${QE_EXECUTABLE}"
+    echo "input=${QE_INPUT_SOURCE}"
+    echo "nodes=${SLURM_JOB_NUM_NODES}"
+    echo "mpi_ranks=${MPI_RANKS}"
+    echo "ranks_per_node=${RANKS_PER_NODE}"
+    echo "gpus_per_node=7"
+    echo "openmp_threads=${OPENMP_THREADS}"
+    echo "k_point_pools=${K_POINT_POOLS}"
+} > "${RUN_DIRECTORY}/run-metadata.txt"
+
+sha256sum     "${QE_EXECUTABLE}"     "${QE_INPUT_COPY}"     > "${RUN_DIRECTORY}/sha256sums.txt"
+
+module list 2> "${RUN_DIRECTORY}/modules.txt" || true
+scontrol show job "${SLURM_JOB_ID}" > "${RUN_DIRECTORY}/slurm-job.txt"
+
+# Run QE from the isolated run directory so relative outdir paths
+# resolve inside this job rather than inside the submission directory.
+cd "${RUN_DIRECTORY}"
+
+set +e
+
+mpirun     --bind-to none     --np "${MPI_RANKS}"     --map-by "ppr:${RANKS_PER_NODE}:node"     -x OMP_NUM_THREADS     -x QE_EXECUTABLE     -x QE_INPUT_COPY     -x K_POINT_POOLS     -x RUN_DIRECTORY     bash -c '
+        set -euo pipefail
+
+            GLOBAL_RANK="${OMPI_COMM_WORLD_RANK:?missing OMPI_COMM_WORLD_RANK}"
+            LOCAL_RANK="${OMPI_COMM_WORLD_LOCAL_RANK:?missing OMPI_COMM_WORLD_LOCAL_RANK}"
+            ORIGINAL_VISIBLE_GPUS="${CUDA_VISIBLE_DEVICES:-}"
+
+            if [[ -n "${ORIGINAL_VISIBLE_GPUS}" ]]; then
+                IFS="," read -r -a GPU_LIST <<< "${ORIGINAL_VISIBLE_GPUS}"
+                if (( LOCAL_RANK >= ${#GPU_LIST[@]} )); then
+                    echo "ERROR: local rank ${LOCAL_RANK} exceeds visible GPU count ${#GPU_LIST[@]}" >&2
+                    exit 2
+                fi
+                SELECTED_GPU="${GPU_LIST[$LOCAL_RANK]}"
+            else
+                SELECTED_GPU="${LOCAL_RANK}"
+            fi
+
+            export CUDA_VISIBLE_DEVICES="${SELECTED_GPU}"
+            export ACC_DEVICE_NUM=0
+
+            printf "host=%s global_rank=%s local_rank=%s original_visible_gpus=%s selected_gpu=%s\n" \
+                "$(hostname)" \
+                "${GLOBAL_RANK}" \
+                "${LOCAL_RANK}" \
+                "${ORIGINAL_VISIBLE_GPUS:-unset}" \
+                "${SELECTED_GPU}" \
+                > "${RUN_DIRECTORY}/rank-mapping/rank-${GLOBAL_RANK}.txt"
+        exec "${QE_EXECUTABLE}"             -nk "${K_POINT_POOLS}"             -in "${QE_INPUT_COPY}"
+    '     > "${RUN_DIRECTORY}/qe.out"     2> "${RUN_DIRECTORY}/qe.err"
+
+QE_EXIT_CODE=$?
+
+set -e
+
+printf "%s\n" "${QE_EXIT_CODE}" > "${RUN_DIRECTORY}/qe-exit-code.txt"
+exit "${QE_EXIT_CODE}"
