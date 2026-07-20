@@ -5,6 +5,9 @@
 #SBATCH --partition=16gpus
 #SBATCH --job-name=type-a-g4x-baseline
 
+# Node exclusions
+#SBATCH --exclude=25a-hgpn144
+
 # Compute resources
 #SBATCH --nodes=2
 #SBATCH --ntasks=14
