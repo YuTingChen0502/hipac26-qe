@@ -204,7 +204,7 @@ def main():
 
     reference_energy = (
         statistics.median(valid_energies)
-        if len(valid_energies) == 6
+        if len(valid_energies) == expected_trials
         else None
     )
 

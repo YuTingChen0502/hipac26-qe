@@ -1,0 +1,56 @@
+{
+  "combined_improvement_percent": 7.505995203836935,
+  "combined_map7x7_median": 20.85,
+  "combined_map7x7_times": [
+    21.88,
+    20.92,
+    21.07,
+    20.8,
+    20.81,
+    20.82,
+    20.88,
+    20.78
+  ],
+  "combined_map8x6_median": 19.285,
+  "combined_map8x6_times": [
+    19.47,
+    20.04,
+    19.61,
+    18.72,
+    18.44,
+    19.1,
+    19.52,
+    18.46
+  ],
+  "combined_ratio": 0.9249400479616307,
+  "criteria": {
+    "all_e004_trials_valid": true,
+    "candidate_cv_at_most_5_percent": true,
+    "combined_improvement_at_least_3_percent": true,
+    "e004_same_direction": true,
+    "paired_wins_at_least_4_of_5": true
+  },
+  "e002_job": 203455,
+  "e003_job": 203897,
+  "e004_improvement_percent": 10.04324843825084,
+  "e004_job": 203925,
+  "e004_map7x7_median": 20.81,
+  "e004_map7x7_times": [
+    20.8,
+    20.81,
+    20.82,
+    20.88,
+    20.78
+  ],
+  "e004_map8x6_median": 18.72,
+  "e004_map8x6_times": [
+    18.72,
+    18.44,
+    19.1,
+    19.52,
+    18.46
+  ],
+  "e004_ratio": 0.8995675156174916,
+  "paired_map8x6_wins": 5,
+  "type_a_freeze": "PASS"
+}
