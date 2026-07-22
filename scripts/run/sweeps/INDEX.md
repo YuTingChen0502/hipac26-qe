@@ -1,0 +1,29 @@
+# Sweep Experiment Index
+
+Canonical hierarchy:
+
+    <build-or-build-set>/
+      <type>/
+        <canonical-case>/
+          <attempt-id>-<purpose>/
+            run.sbatch
+            README.md
+
+Current experiments:
+
+| Build | Type | Case | Attempt | Status | Current result |
+|---|---|---|---|---|---|
+| G4X | A | typeA-au111-manyk | a001-nk-coarse | complete | nk=7 |
+| G4X | A | typeA-au111-manyk | a002-gpu-scaling | planned | pending |
+| G4X | A | typeA-au111-manyk | a003-pool-topology | conditional | pending |
+| G4X | B | typeB-si1000-gamma | a001-gpu-scaling | complete | 8-GPU latency optimum |
+
+Rules:
+
+1. Directory paths store experiment identity.
+2. run.sbatch stores executable behavior.
+3. One attempt means one experimental protocol, not one Slurm job.
+4. Repeats and infrastructure resubmissions remain in the same attempt.
+5. A changed research question or resource shape creates a new attempt.
+6. Existing completed result directories are not moved solely for cleanup.
+7. Future result directories mirror the source hierarchy.
