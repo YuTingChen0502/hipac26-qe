@@ -17,6 +17,10 @@ SPECS = {
         "map7x7": {"count": 3, "ranks": 14, "layout": [7, 7]},
         "map8x6": {"count": 3, "ranks": 14, "layout": [6, 8]},
     },
+    "e004": {
+        "map7x7": {"count": 5, "ranks": 14, "layout": [7, 7]},
+        "map8x6": {"count": 5, "ranks": 14, "layout": [6, 8]},
+    },
 }
 
 
@@ -75,7 +79,7 @@ def main():
     parser.add_argument("--root", required=True)
     parser.add_argument(
         "--experiment",
-        choices=("e002", "e003"),
+        choices=("e002", "e003", "e004"),
         required=True,
     )
     parser.add_argument("--output-dir", required=True)
@@ -97,10 +101,18 @@ def main():
         if path.is_dir()
     )
 
-    if len(trial_dirs) != 6:
+    expected_trials = sum(
+        specification["count"]
+        for specification in specs.values()
+    )
+
+    if len(trial_dirs) != expected_trials:
         print(
             "RAW_VERIFICATION=FAIL "
-            "reason=trial_count actual={}".format(len(trial_dirs))
+            "reason=trial_count expected={} actual={}".format(
+                expected_trials,
+                len(trial_dirs),
+            )
         )
         return 1
 
@@ -384,7 +396,7 @@ def main():
         ratio = medians["r14"] / medians["r7"]
         winner = min(medians, key=medians.get)
 
-    if args.experiment == "e003" and len(medians) == 2:
+    if args.experiment in ("e003", "e004") and len(medians) == 2:
         ratio_name = "map8x6_over_map7x7_median_ratio"
         ratio = medians["map8x6"] / medians["map7x7"]
         winner = min(medians, key=medians.get)
