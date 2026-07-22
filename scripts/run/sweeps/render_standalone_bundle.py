@@ -41,6 +41,7 @@ def main():
     env_script = Path(args.env_script).resolve()
     qe_parser = Path(args.parser).resolve()
     collector = Path(args.collector).resolve()
+    parser_dependency = qe_parser.parent / "qe_convergence.py"
     output = Path(args.output_dir).resolve()
     temporary = Path(str(output) + ".tmp")
 
@@ -50,6 +51,7 @@ def main():
         env_script,
         qe_parser,
         collector,
+        parser_dependency,
     ]
 
     for path in required:
@@ -157,6 +159,7 @@ source "${SWEEP_ROOT}/lib/g4x_sweep_common.sh"
         (env_script, temporary / "nvhpc259.sh"),
         (qe_parser, temporary / "parse_qe_smoke.py"),
         (collector, temporary / "collect_g4x_sweep.py"),
+        (parser_dependency, temporary / "qe_convergence.py"),
     ]
 
     for source_path, destination in copies:
@@ -178,6 +181,7 @@ source "${SWEEP_ROOT}/lib/g4x_sweep_common.sh"
             "helper_source={}".format(helper),
             "env_source={}".format(env_script),
             "parser_source={}".format(qe_parser),
+            "parser_dependency_source={}".format(parser_dependency),
             "collector_source={}".format(collector),
             "runtime_helper_dependency=none",
             "runtime_parser={}/parse_qe_smoke.py".format(output),
