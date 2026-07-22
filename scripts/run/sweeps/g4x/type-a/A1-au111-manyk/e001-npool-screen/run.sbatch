@@ -36,9 +36,7 @@ TRIAL_PAUSE_SECONDS=5
 export NUMERICAL_ENERGY_TOLERANCE_RY="${NUMERICAL_ENERGY_TOLERANCE_RY:-1e-6}"
 
 source "${REPO}/scripts/env/nvhpc259.sh"
-REPO_ROOT="$(
-    git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel
-)"
+REPO_ROOT="${REPO}"
 SWEEP_ROOT="${REPO_ROOT}/scripts/run/sweeps"
 source "${SWEEP_ROOT}/lib/g4x_sweep_common.sh"
 
