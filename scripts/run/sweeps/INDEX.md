@@ -16,7 +16,7 @@ Current experiments:
 | G4X | A | typeA-au111-manyk | a001-nk-coarse | complete | nk=7 |
 | G4X | A | typeA-au111-manyk | a002-gpu-scaling | planned | pending |
 | G4X | A | typeA-au111-manyk | a003-pool-topology | conditional | pending |
-| G4X | B | typeB-si1000-gamma | a001-gpu-scaling | complete | 8-GPU latency optimum |
+| G4X | B | B1-si1000-gamma | e001-gpu-scaling | complete | r8 tested latency winner; r4 active-GPU-s winner |
 
 Rules:
 

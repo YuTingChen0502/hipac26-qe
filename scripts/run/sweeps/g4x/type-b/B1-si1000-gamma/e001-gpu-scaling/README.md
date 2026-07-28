@@ -1,4 +1,4 @@
-# a001-gpu-scaling
+# e001-gpu-scaling
 
 Status: complete
 
