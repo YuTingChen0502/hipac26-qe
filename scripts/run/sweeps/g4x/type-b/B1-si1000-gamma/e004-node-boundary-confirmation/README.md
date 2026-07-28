@@ -1,6 +1,6 @@
 # e004-node-boundary-confirmation
 
-Status: prepared; QE confirmation not yet submitted.
+Status: complete; decision `FROZEN_R8_ONE_NODE`.
 
 ## Purpose
 

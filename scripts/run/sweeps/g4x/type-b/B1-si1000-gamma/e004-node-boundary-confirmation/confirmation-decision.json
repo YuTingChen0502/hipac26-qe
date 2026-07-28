@@ -1,0 +1,23 @@
+{
+  "case_id": "B1-si1000-gamma",
+  "combined_e001_e004": {
+    "r16_median_sec": 108.505,
+    "r16_over_r8_ratio": 1.2720398593200466,
+    "r16_trials": 8,
+    "r8_median_sec": 85.30000000000001,
+    "r8_trials": 8
+  },
+  "decision": "FROZEN_R8_ONE_NODE",
+  "e004_r16_over_r8_ratio": 1.2630074328187535,
+  "e004_r8_latency_reduction_percent": 20.823902218198278,
+  "experiment": "e004-node-boundary-confirmation",
+  "frozen_candidate": "r8",
+  "paired_wins": {
+    "r16": 0,
+    "r8": 5,
+    "ties": 0,
+    "total": 5
+  },
+  "schema": "hipac26_qe_b1_node_boundary_confirmation_v1",
+  "valid_trials": 10
+}

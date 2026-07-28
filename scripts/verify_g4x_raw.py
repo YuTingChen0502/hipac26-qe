@@ -152,6 +152,27 @@ EXPERIMENTS: dict[str, dict[str, Any]] = {
         },
     },
 
+    "b1-e004": {
+        "expected_k_points": 1,
+        "expected_iterations": 20,
+        "expected_input_sha256": B1_INPUT_SHA,
+        "default_energy_tolerance": 1e-7,
+        "candidates": {
+            "r8": {
+                "count": 5,
+                "ranks": 8,
+                "layout": [8],
+                "active_gpus": 8,
+            },
+            "r16": {
+                "count": 5,
+                "ranks": 16,
+                "layout": [8, 8],
+                "active_gpus": 16,
+            },
+        },
+    },
+
 }
 
 
@@ -368,6 +389,18 @@ def derived_summary(
             f"r8_over_r6_median_ratio={ratio:.9f}",
             "r8_vs_r6_latency_reduction_percent="
             f"{(1.0 - ratio) * 100.0:.3f}",
+        ])
+
+    elif (
+        experiment == "b1-e004"
+        and {"r8", "r16"} <= medians.keys()
+    ):
+        ratio = medians["r16"] / medians["r8"]
+
+        lines.extend([
+            f"r16_over_r8_median_ratio={ratio:.9f}",
+            "r8_vs_r16_latency_reduction_percent="
+            f"{(1.0 - 1.0 / ratio) * 100.0:.3f}",
         ])
 
     return lines

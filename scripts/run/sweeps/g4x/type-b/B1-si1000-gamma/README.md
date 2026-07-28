@@ -19,3 +19,17 @@ Tuning order:
 
 This is a project-defined representative case, not an official universal
 Quantum ESPRESSO benchmark class.
+
+
+## Freeze status
+
+- Status: frozen
+- Frozen candidate: `r8`
+- Nodes: `1`
+- Active GPUs: `8`
+- MPI ranks: `8`
+- `nk=1`
+- `OMP=12`
+- Node-boundary decision: `FROZEN_R8_ONE_NODE`
+
+See `type-b-freeze.md` and `frozen-launch.env`.
