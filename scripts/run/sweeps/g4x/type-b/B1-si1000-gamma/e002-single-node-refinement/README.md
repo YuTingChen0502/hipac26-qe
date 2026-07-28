@@ -1,6 +1,6 @@
 # e002-single-node-refinement
 
-Status: launcher smoke passed; QE refinement not yet submitted.
+Status: QE refinement complete; independent confirmation pending.
 
 ## Question
 
