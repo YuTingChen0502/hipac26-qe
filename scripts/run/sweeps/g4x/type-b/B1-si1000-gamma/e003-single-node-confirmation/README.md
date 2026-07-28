@@ -1,6 +1,6 @@
 # e003-single-node-confirmation
 
-Status: prepared; QE confirmation not yet submitted.
+Status: complete; latency decision `CONFIRMED_R8`.
 
 ## Purpose
 

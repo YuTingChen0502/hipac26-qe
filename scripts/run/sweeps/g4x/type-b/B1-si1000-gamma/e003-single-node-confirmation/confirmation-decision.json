@@ -1,0 +1,34 @@
+{
+  "case_id": "B1-si1000-gamma",
+  "combined_latency_reduction_percent": 20.293398533007345,
+  "confirmed_latency_candidate": "r8",
+  "decision": "CONFIRMED_R8",
+  "median_ratios": {
+    "combined_r8_over_r6": 0.7970660146699265,
+    "e002_r8_over_r6": 0.7482699739372697,
+    "e003_r8_over_r6": 0.7950591175622417
+  },
+  "next_experiment": "e004-node-boundary-confirmation",
+  "paired_wins": {
+    "r6": 0,
+    "r8": 10,
+    "ties": 0,
+    "total": 10
+  },
+  "practical_tie_band_percent": 2.0,
+  "resource_metrics": {
+    "combined_active_gpu_seconds_winner": "r6",
+    "combined_allocated_gpu_seconds_winner": "r8",
+    "combined_r6_active_gpu_seconds": 625.77,
+    "combined_r6_allocated_gpu_seconds": 834.36,
+    "combined_r8_active_gpu_seconds": 665.04,
+    "combined_r8_allocated_gpu_seconds": 665.04,
+    "e003_active_gpu_seconds_winner": "r6"
+  },
+  "schema": "hipac26_qe_b1_single_node_confirmation_v2",
+  "valid_trials": {
+    "combined": 20,
+    "e002": 10,
+    "e003": 10
+  }
+}
