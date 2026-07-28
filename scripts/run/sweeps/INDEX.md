@@ -17,7 +17,7 @@ Current experiments:
 | G4X | A | typeA-au111-manyk | a002-gpu-scaling | planned | pending |
 | G4X | A | typeA-au111-manyk | a003-pool-topology | conditional | pending |
 | G4X | B | B1-si1000-gamma | e001-gpu-scaling | complete | r8 tested latency winner; r4 active-GPU-s winner |
-| G4X | B | B1-si1000-gamma | e002-single-node-refinement | prepared | paired r6-versus-r8 single-node refinement |
+| G4X | B | B1-si1000-gamma | e002-single-node-refinement | smoke-passed | paired r6-versus-r8 QE refinement pending |
 
 Rules:
 
