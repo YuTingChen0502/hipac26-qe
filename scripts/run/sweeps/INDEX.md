@@ -19,7 +19,7 @@ Current experiments:
 | G4X | B | B1-si1000-gamma | e001-gpu-scaling | complete | r8 tested latency winner; r4 active-GPU-s winner |
 | G4X | B | B1-si1000-gamma | e002-single-node-refinement | complete | r8 preliminary latency winner; e003 confirmation pending |
 | G4X | B | B1-si1000-gamma | e003-single-node-confirmation | complete | latency decision CONFIRMED_R8; active-GPU-s favors r6 |
-| G4X | B | B1-si1000-gamma | e004-node-boundary-confirmation | planned | confirmed r8 latency candidate versus r16 |
+| G4X | B | B1-si1000-gamma | e004-node-boundary-confirmation | prepared | paired r8-versus-r16 node-boundary confirmation |
 
 Rules:
 
