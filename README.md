@@ -34,6 +34,8 @@ The scaling study showed that more GPUs were not automatically faster.
 
 These are workload-specific results. They are not claims of a universal best configuration or official competition-scale performance.
 
+See [`docs/results.md`](docs/results.md) for the condensed evidence summary and validation boundary.
+
 ## Engineering approach
 
 The repository keeps the experiment machinery separate from generated runtime data:
@@ -44,7 +46,7 @@ profiles/  Nano4 runtime profiles
 schemas/   manifest and case-registry schemas
 scripts/   build, run, sweep, parsing, and verification tools
 tests/     controller and convergence tests
-docs/      environment, validation, and historical evidence notes
+docs/      environment, validation, results, and historical evidence notes
 ```
 
 The main controller is `scripts/qe_runctl.py`. It validates experiment metadata and rendered artifacts before submission, then parses and summarizes results after execution.
@@ -61,9 +63,7 @@ Representative supporting tools include:
 
 The final reviewed snapshot passed repository-wide checks covering tracked Python compilation, shell/Slurm syntax, sweep validation, Git object integrity, frozen-workload review, raw-result verification, and handoff checksum validation.
 
-Historical handoff material under `docs/handoffs/` is retained as provenance for the experiment campaign; the repository landing page intentionally summarizes the technical work rather than the original control-process notes.
-
-For the detailed frozen configurations and evidence boundary, see `docs/handoffs/20260729/01_OPTIMIZATION_MAINLINE.md`.
+Historical handoff material under `docs/handoffs/` is retained as provenance for the experiment campaign, while the README and `docs/results.md` provide the public-facing technical summary.
 
 ## Scope
 
