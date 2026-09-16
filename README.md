@@ -1,131 +1,75 @@
-# hipac26-qe
+# HiPAC26 Quantum ESPRESSO Performance Engineering
 
-Clean automation repository for HiPAC26 Quantum ESPRESSO work on nano4.
+This repository documents my HiPAC26 work on Quantum ESPRESSO performance engineering for the NCHC Nano4 NVIDIA H200 platform.
 
-The old process/history repository is `hipac26-qe-process`. This repository is intentionally minimal and keeps only files needed for future controlled automation.
+The work focused on making performance experiments reproducible and interpretable before tuning: controlled builds, correctness checks, workload registration, run manifests, GPU/MPI placement, profiling, and repeated validation.
+
+## What I worked on
+
+- Built and validated Quantum ESPRESSO GPU execution paths with NVHPC/CUDA on H200.
+- Developed a controlled run pipeline around manifests, case registries, rendered Slurm jobs, parsers, and result verification.
+- Investigated workload-dependent GPU scaling, MPI rank placement, k-point pools, and node boundaries.
+- Added profiling and raw-output checks so timing claims could be traced back to accepted runs.
+- Preserved negative results and confirmation runs instead of reporting only the fastest configuration.
+
+## Selected results
+
+Data cutoff: 2026-07-29.
+
+### Au(111), many-k-point workload
+
+The tuning path covered k-point pools, ranks per pool, and topology-aware placement.
+
+- 14 MPI ranks / GPUs across 2 nodes was retained for the workload.
+- In the independent placement confirmation, the `8+6` rank layout reached a median of 18.72 s versus 20.81 s for the `7+7` layout.
+- The final workload-specific configuration used 7 k-point pools with 2 ranks per pool.
+
+### Si1000, Gamma-only workload
+
+The scaling study showed that more GPUs were not automatically faster.
+
+- Across two independent single-node studies, 8 GPUs reduced median latency from 104.295 s to 83.130 s versus 6 GPUs, a 20.293% reduction with 10/10 paired wins.
+- In a separate node-boundary confirmation, 8 GPUs on one node reached 87.45 s median while 16 GPUs across two nodes reached 110.45 s.
+- 39 Si1000 Quantum ESPRESSO trials were accepted into the final evidence set.
+
+These are workload-specific results. They are not claims of a universal best configuration or official competition-scale performance.
+
+## Engineering approach
+
+The repository keeps the experiment machinery separate from generated runtime data:
+
+```text
+config/    machine, case, and manifest configuration
+profiles/  Nano4 runtime profiles
+schemas/   manifest and case-registry schemas
+scripts/   build, run, sweep, parsing, and verification tools
+tests/     controller and convergence tests
+docs/      environment, validation, and historical evidence notes
+```
+
+The main controller is `scripts/qe_runctl.py`. It validates experiment metadata and rendered artifacts before submission, then parses and summarizes results after execution.
+
+Representative supporting tools include:
+
+- `scripts/qe_mapping_validator.py` for rank/GPU placement validation
+- `scripts/qe_convergence.py` for convergence checks
+- `scripts/verify_g4x_raw.py` for raw-result verification
+- `scripts/collect_g4x_sweep.py` for sweep aggregation
+- `scripts/run/sweeps/` for workload-specific experiments and retained result summaries
+
+## Reproducibility and evidence
+
+The final reviewed snapshot passed repository-wide checks covering tracked Python compilation, shell/Slurm syntax, sweep validation, Git object integrity, frozen-workload review, raw-result verification, and handoff checksum validation.
+
+Historical handoff material under `docs/handoffs/` is retained as provenance for the experiment campaign; the repository landing page intentionally summarizes the technical work rather than the original control-process notes.
+
+For the detailed frozen configurations and evidence boundary, see `docs/handoffs/20260729/01_OPTIMIZATION_MAINLINE.md`.
 
 ## Scope
 
-This repo contains:
+The repository supports claims about the validated Nano4/H200 experiments recorded here. It does not claim:
 
-```text
-automation policy
-nano4 configuration
-manifest and testcase registry schemas
-single run controller
-controlled manifest templates
-opencode skills and bounded phase agent policy
-```
-
-This repo does not contain:
-
-```text
-QE source tree
-QE binaries
-pseudopotentials
-input cases
-run directories
-Slurm logs
-QE outputs
-optimization claims
-```
-
-## Current control boundary
-
-```text
-Level 4 automation ladder was validated in the archived process repo.
-Level 5 adaptive behavior remains disabled.
-benchmark_valid must remain false until an official benchmark gate exists.
-two_node_environment_verified=false
-two_node_qe_submit_enabled=false
-environment_probe_submit_enabled=false
-performance_claim_allowed=false
-optimization_claim_allowed=false
-```
-
-Prepared, rendered, validated, approved, submitted, running, completed, parsed,
-accepted, and pass-closed are distinct states. This repository can prepare,
-render, and locally validate artifacts. Only a Control Center decision can
-approve submission, accept evidence, pass-close a gate, or authorize the next
-gate.
-
-No command in this repository grants permission to submit jobs by itself. Execution requires a human-approved manifest and must go through:
-
-```bash
-python3 scripts/qe_runctl.py submit --manifest <approved_manifest.json>
-```
-
-Forbidden outside explicit approval:
-
-```text
-naked sbatch
-manual mpirun
-manual pw.x
-bash job.sh
-./job.sh
-automatic retry
-adaptive search
-benchmark_valid=true
-```
-
-## Minimal workflow
-
-```text
-1. Prepare inputs on nano4 storage, not in Git.
-2. Create a manifest that records binary/input/pseudo paths and hashes.
-3. Render run directories with qe_runctl.py render.
-4. Validate manifest and rendered jobs with qe_runctl.py validate.
-5. Human approval edits/creates an approved manifest.
-6. Submit only with qe_runctl.py submit.
-7. Parse with qe_runctl.py parse.
-8. Summarize with qe_runctl.py summarize.
-```
-
-For P0-B/P0-C, the controlled environment probe route is render/validate/dry-run
-only. The template `config/manifests/p0b_2node_probe.template.json` is prepared
-for `P1A-T001`, but it is unapproved and non-submittable.
-
-The P1-A no-QE probe renderer is deterministic and controller-owned: it records
-secret-safe allowlisted runtime identity, verifies the approved Nano4 NVHPC/HPC-X
-MPI route, compiles a fixed task-local CUDA runtime identity probe, and keeps
-production submission fixed to `sbatch` behind `qe_runctl.py submit`.
-
-V2 manifests are fail-closed on path containment and rendered-artifact
-integrity. `run_root` must match the configured Nano4 run root, every `run_dir`
-must be a strict descendant, and wrapper-only submit rejects symlinks or any
-post-render modification of `job.sh` or `metadata.json` before subprocess use.
-
-## P0-B/P0-C claim boundary
-
-Do not claim that the two-node environment is verified, that two-node QE is
-ready, that an official benchmark exists, that a speedup was measured, that a
-best configuration was found, that a build is optimized, or that an official
-HiPAC result exists.
-
-The configured binary identity discrepancy is intentional and unresolved:
-`config.current_binary.path` differs from the accepted G1 smoke path
-`/work/$USER/hipac26-qe-builds/G1-qe75-nvhpc259-gpu-base/install/bin/pw.x`.
-The status remains `identity_status=needs_nano4_verification`; compute-side
-identity/linkage verification is deferred.
-
-## Canonical nano4 locations
-
-Configured in `config/nano4.json`:
-
-```text
-repo root: /work/$USER/hipac26-qe
-build root: /work/$USER/hipac26-qe-builds
-pseudo root: /work/$USER/hipac26-qe-pseudos
-run root: /work/$USER/hipac26-qe-runs
-case root: /work/$USER/hipac26-qe-cases
-```
-
-## First nano4 sync
-
-```bash
-# [nano4]
-cd /work/$USER
-git clone git@github.com:YuTingChen0502/hipac26-qe.git
-cd /work/$USER/hipac26-qe
-git status --short
-```
+- a universal Quantum ESPRESSO tuning policy;
+- a uniquely proven cause for every scaling result;
+- a repeated formal speedup between all build variants;
+- official-scale HiPAC performance.
